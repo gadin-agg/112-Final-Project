@@ -31,8 +31,10 @@
 
 import os
 import pandas as pd
+from random import sample
 from cmu_graphics import *
 
+# Cleaning the CSV file
 def getCleanData(filePath):
     assetData = pd.read_csv(filePath)
     
@@ -46,8 +48,7 @@ def getCleanData(filePath):
 
     return monthlyStockData['Close/Last'].tolist()
 
-
-
+# General class for each of the assets
 class Asset:
     def __init__(self, ticker, priceData, color):
         self.ticker = ticker
@@ -55,6 +56,7 @@ class Asset:
         self.color = color
         self.sharesOwned = 0
 
+    # makes sure the game isnt over / out of bounds
     def getCurrentPrice(self, monthIndex):
         if monthIndex < len(self.priceData):
             return self.priceData[monthIndex]
@@ -86,8 +88,18 @@ def loadAssets(categories):
 
     return allStocks, index, allCrops
 
+def getNetWorth(app):
+    total = app.cash
+    for stock in app.stocks:
+        total += stock.getValue(app.monthIndex)
+    for crop in app.crops:
+        total += crop.getValue(app.monthIndex)
+    for index in app.index:
+        total += index.getValue(app.monthIndex)
+    return pythonRound(total, 2)
 
 def onAppStart(app):
+    # Basic stuff
     app.cash = 4000
     app.monthIndex = 0
 
@@ -96,8 +108,32 @@ def onAppStart(app):
         'index_data' : 'dodgerBlue',
         'crop_data' : 'coral'}
 
-    app.allStocks, app.index, app.allCrops = loadAssets(categories)
+    # Loading the stock data, picking random things
+    allS, I, allC = loadAssets(categories)
 
-    print(f"Loaded {len(app.allStocks)} stocks, {len(app.index)} indices, and {len(app.allCrops)} crops.")
+    app.stocks = sample(allS, 5)
+    app.index = I
+    app.crops = sample(allC, 1)
 
-runApp(width=800, height=600)
+    # timing constants
+    app.indexRelease = 6
+    app.stockRelease = 12
+    app.cropRelease = 18
+    app.goldRelease = 24
+
+    print(f"Loaded {len(app.stocks)} stocks, {len(app.index)} index, and {len(app.crops)} crop")
+
+def redrawAll(app):
+
+    # Drawing the side bar
+    drawRect(0, 0, 200, app.height, fill= rgb(65, 70, 57))
+
+    drawLabel(f'YEAR {app.monthIndex // 12} OF 10', 20, 30, fill = 'white', size = 20, font = 'serif', bold = True, align = 'left')
+    drawLabel('POCKET CASH', 20, 400, fill = 'white', size = 20, font = 'serif', bold = True, align = 'left')
+    drawLabel(f'${pythonRound(app.cash, 2)}', 20, 430, fill = 'white', size = 25, font = 'serif', bold = True, align = 'left')
+    drawLabel('NET WORTH', 20, 470, fill = 'white', size = 20, font = 'serif', bold = True, align = 'left')
+    drawLabel(f'${getNetWorth(app)}', 20, 500, fill = 'white', size = 25, font = 'serif', bold = True, align = 'left')
+
+
+
+runApp(width=1000, height=800)
