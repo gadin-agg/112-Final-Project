@@ -1,39 +1,3 @@
-# Download 20 stock CSV files and put them in a folder named data. !!------ DONE ------!!
-
-# Use the csv or pandas module in onAppStart to load all price data into a dictionary.
-
-# Set up app variables for cash, sharesOwned, and currentDayIndex.
-
-# Use random.sample to pick 5 stocks from your list of 20 at the start of each game.
-
-# Create an onStep function that increments currentDayIndex every 1 or 2 seconds.
-
-# Update the list of "visible" prices in onStep so the graph has new data to display.
-
-# Draw 5 beige rectangles to serve as the "cards" for your stocks.
-
-# Place your drawScrollingGraph function inside each card to show the price movement.
-
-# Use onMousePress to detect if a user clicks a "Buy" or "Sell" area on a card.
-
-# Update app.cash and app.sharesOwned based on those clicks and the current price.
-
-# Create a list of "Life Events" (e.g., "Car Break Down", "Tax Refund").
-
-# Add a small random chance in onStep to trigger a popup for these events.
-
-# Add a "Savings Account" card that applies a fixed interest rate to a specific cash balance.
-
-# Draw a "Total Net Worth" label at the top that calculates the value of all cash and stocks combined.
-
-# Apply the olive green and beige color scheme to all shapes and labels.
-
-
-# 04/16/26 - Decided to start coding each individual component in the game, then add features as I go. 
-
-
-
-
 import os
 from numpy import size
 import pandas as pd
@@ -97,10 +61,11 @@ class Button:
                 isHighlighted = (self.asset.multiplier == self.value)
 
         color = 'gold' if isHighlighted else 'oldLace'
+        size = 8 if self.value == 'MAX' and self.asset in app.stocks else 12
 
         drawRect(self.x + 2, self.y + 2, self.width, self.height, fill = rgb(75, 75, 75))
         drawRect(self.x, self.y, self.width, self.height, fill = color, border = 'black', borderWidth = 2)
-        drawLabel(self.text, self.x + self.width/2, self.y + self.height/2, fill = 'black', size = 12, font = 'serif', bold = True, align = 'center')
+        drawLabel(self.text, self.x + self.width/2, self.y + self.height/2, fill = 'black', size = size, font = 'serif', bold = True, align = 'center')
 
     def isClicked(self, mouseX, mouseY):
         return (self.x <= mouseX <= self.x + self.width and self.y <= mouseY <= self.y + self.height)
@@ -132,17 +97,6 @@ def loadAssets(categories):
                 #     # gold.append(asset)
 
     return allStocks, index, allCrops, gold
-
-def getNetWorth(app):
-    total = app.cash
-    for stock in app.stocks:
-        total += stock.getValue(app.monthIndex)
-    for crop in app.crops:
-        total += crop.getValue(app.monthIndex)
-    for index in app.index:
-        total += index.getValue(app.monthIndex)
-    total += app.savingsBalance
-    return pythonRound(total, 2)
 
 def onAppStart(app):
     categories = {
@@ -209,7 +163,7 @@ def restartApp(app):
     # picking random sample (gold and index only have 1, so we dont need to sample)
     app.stocks = sample(app.allS, 5)
     app.crops = sample(app.allC, 1)
-    app.savingsMultiplier = 500
+    app.savingsMultiplier = 0
 
     initializeButtons(app)
 
@@ -222,17 +176,26 @@ def initializeButtons(app):
 
     # --- Savings Buttons --- 
     createMultiplierRow(app, 'savings', 427.5, 210, [500, 1000, 5000, 'MAX'])
-    app.buttons.append(Button(685, 210, 80, 35, 'Deposit', 'savings', 'deposit', 100))
-    app.buttons.append(Button(250, 210, 80, 35, 'Withdraw', 'savings', 'withdraw', 100))
+    app.buttons.append(Button(250, 210, 80, 35, 'Deposit', 'savings', 'deposit', 100))
+    app.buttons.append(Button(685, 210, 80, 35, 'Withdraw', 'savings', 'withdraw', 100))
 
     # --- Index Buttons ---
     createMultiplierRow(app, app.index[0], 1022.5, 210, [500, 1000, 5000, 'MAX'])
     app.buttons.append(Button(840, 210, 80, 35, 'Buy', app.index[0], 'buy', 100))
     app.buttons.append(Button(1270, 210, 80, 35, 'Sell', app.index[0], 'sell', 100))
 
+    # --- Stock Buttons ---
+    for i in range(len(app.stocks)):
+        stock = app.stocks[i]
+        x, y = 240 + i * (216 + 20), 480
+        x1 = 270.5 + i * (216 + 20)
+        createMultiplierRow(app, stock, x1, y - 30, [1, 10, 25, 'MAX'])
+        app.buttons.append(Button(x, y, 40, 25, 'Buy', stock, 'buy', 100))
+        app.buttons.append(Button(x + 140, y, 40, 25, 'Sell', stock, 'sell', 100))
+
 def createMultiplierRow(app, asset, x, y, multipliers):
-    width = 35
-    height = 35
+    width = 35 if asset not in app.stocks else 25
+    height = 35 if asset not in app.stocks else 25
     gap = 5
     for i in range(len(multipliers)):
         multiplier = multipliers[i]
@@ -285,6 +248,11 @@ def onKeyPress(app, key):
         app.paused = not app.paused
     elif key == 's':
         takeStep(app)
+    elif key == 'b':
+        app.stockReleased = True
+        app.indexReleased = True
+        app.cropReleased = True
+        app.goldReleased = True
 
 def onMousePress(app, mouseX, mouseY):
     for button in app.buttons:
@@ -317,10 +285,11 @@ def drawYearBar(app):
 
 def drawTile(app, x, y, width, height, assetName, size):
     color = 'gray' if assetName == 'LOCKED' else 'oldLace'
+    shift = 25 if assetName in app.stockNames.values() else 30
     drawRect(x + 7, y + 7, width, height, fill = rgb(75, 75, 75))
     drawRect(x, y, width, height, fill = color)
     drawRect(x + 7, y + 7, width - 10, height - 10, fill = None, border = 'black', borderWidth = 3)
-    drawLabel(assetName, x + width/2, y + 30, fill = 'black', size = size, font = 'serif', bold = True, align = 'center')
+    drawLabel(assetName, x + width/2, y + shift, fill = 'black', size = size, font = 'serif', bold = True, align = 'center')
 
 def drawAssetTiles(app):
     stockTileWidth = 216
@@ -336,6 +305,9 @@ def drawAssetTiles(app):
     drawLabel(f'${pythonRound(app.savingsBalance, 2)}', 250 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
 
     # Index fund
+    price = app.index[0].getCurrentPrice(app.monthIndex)
+    change = (price / app.index[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
+    changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
     title = 'Index Fund' if app.indexReleased else 'LOCKED'
     size = 20 if app.indexReleased else 15
     drawTile(app, 220 + otherTileWidth + 20, 20, otherTileWidth, otherTileHeight, title, size)
@@ -343,18 +315,29 @@ def drawAssetTiles(app):
         drawLabel(f'Balance', 840, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLine(840, 190, 840 + otherTileWidth - 60, 190, fill = 'black', dashes = True)
         drawLabel(f'${pythonRound(app.index[0].getValue(app.monthIndex), 2)}', 840 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${pythonRound(price, 2)}', 912.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'{pythonRound(change * 100, 2)}%', 1227.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+    drawGraph(app, 995, 80, 200, 80, app.index[0])
 
     # Stocks
     for i in range(5):
+        price = app.stocks[i].getCurrentPrice(app.monthIndex)
+        change = (price / app.stocks[i].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
+        changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
         title = app.stockNames[app.stocks[i].ticker] if app.stockReleased else 'LOCKED'
         drawTile(app, 220 + (i * (stockTileWidth + 20)), 280, stockTileWidth, stockTileHeight, title, 15)
-    
+        if app.stockReleased:
+            drawLabel(f'${pythonRound(price, 2)}', 240 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+            drawLabel(f'{pythonRound(change * 100, 2)}%', 345 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+            drawGraph(app, 240 + (i * (stockTileWidth + 20)) + 20, 370, 140, 60, app.stocks[i])
     # Crops
+    # add price and change labels
     title = f'{app.crops[0].ticker}' if app.cropReleased else 'LOCKED'
     size = 20 if app.cropReleased else 15
     drawTile(app, 220, 540, otherTileWidth, otherTileHeight, title, size)
 
     # Gold
+    # add price and change labels
     title = 'Gold' if app.goldReleased else 'LOCKED'
     size = 20 if app.goldReleased else 15
     drawTile(app, 220 + otherTileWidth + 20, 540, otherTileWidth, otherTileHeight, title, size)
@@ -377,6 +360,37 @@ def drawButtons(app):
         if isReleased(app, button.asset):
             button.draw(app)
 
+def drawGraph(app, x, y, width, height, asset):
+    # get the data
+    startMonth = max(0, app.monthIndex - 10)
+    dataSlice = asset.priceData[startMonth:app.monthIndex + 1]
+    if len(dataSlice) < 2: return
+
+    # scaling the graph
+    minPrice, maxPrice = min(dataSlice), max(dataSlice)
+    priceRange = maxPrice - minPrice if maxPrice != minPrice else 1
+    stepX = width / 10
+
+    # color logic
+    if asset.priceData[app.monthIndex] >= asset.priceData[app.monthIndex - 1]:
+        color = 'forestGreen'
+    else:
+        color = 'fireBrick'
+
+    points = []
+
+    for i in range(len(dataSlice)):
+        currX = x + (i * stepX)
+        currY = y + height - ((dataSlice[i] - minPrice) / priceRange * height)
+        points.extend([currX, currY])
+
+    # close the polygon by going to the bottom right and then back to the start
+    points.extend([x + (len(dataSlice)-1) * stepX, y + height])
+    points.extend([x, y + height])
+
+    # shaded area of the graph
+    drawPolygon(*points, fill=color, opacity=20)
+
 
 # --------- SAVINGS ACCOUNT FUNCTIONS ----------
 
@@ -384,7 +398,7 @@ def adjustSavingsBalance(app):
     app.savingsBalance *= (1 + app.savingsAPY / 12)
 
 
-# --------- TRADE EXECUTION FUNCTIONS ----------
+# --------- OTHER FUNCTIONS ----------
 
 def executeTrade(app, action, asset):
     price = asset.getCurrentPrice(app.monthIndex)
@@ -429,9 +443,18 @@ def handleSavings(app, action):
         app.cash += amount
         app.savingsBalance -= amount
 
+def getNetWorth(app):
+    total = app.cash
+    for stock in app.stocks:
+        total += stock.getValue(app.monthIndex)
+    for crop in app.crops:
+        total += crop.getValue(app.monthIndex)
+    for index in app.index:
+        total += index.getValue(app.monthIndex)
+    total += app.savingsBalance
+    return pythonRound(total, 2)
 
 
-# Redraw all
 def redrawAll(app):
     drawSideBar(app)
     drawAssetTiles(app)
