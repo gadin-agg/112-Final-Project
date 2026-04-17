@@ -193,6 +193,16 @@ def initializeButtons(app):
         app.buttons.append(Button(x, y, 40, 25, 'Buy', stock, 'buy', 100))
         app.buttons.append(Button(x + 140, y, 40, 25, 'Sell', stock, 'sell', 100))
 
+    # --- Crop Buttons ---
+    createMultiplierRow(app, app.crops[0], 432.5, 730, [500, 1000, 5000, 'MAX'])
+    app.buttons.append(Button(250, 730, 80, 35, 'Buy', app.crops[0], 'buy', 100))
+    app.buttons.append(Button(680, 730, 80, 35, 'Sell', app.crops[0], 'sell', 100))
+
+    # --- Gold Buttons ---
+    # createMultiplierRow(app, app.gold[0], 1022.5, 730, [500, 1000, 5000, 'MAX'])
+    # app.buttons.append(Button(840, 730, 80, 35, 'Buy', app.gold[0], 'buy', 100))
+    # app.buttons.append(Button(1270, 730, 80, 35, 'Sell', app.gold[0], 'sell', 100))
+
 def createMultiplierRow(app, asset, x, y, multipliers):
     width = 35 if asset not in app.stocks else 25
     height = 35 if asset not in app.stocks else 25
@@ -317,7 +327,7 @@ def drawAssetTiles(app):
         drawLabel(f'${pythonRound(app.index[0].getValue(app.monthIndex), 2)}', 840 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLabel(f'${pythonRound(price, 2)}', 912.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
         drawLabel(f'{pythonRound(change * 100, 2)}%', 1227.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-    drawGraph(app, 995, 80, 200, 80, app.index[0])
+        drawGraph(app, 995, 80, 200, 80, app.index[0])
 
     # Stocks
     for i in range(5):
@@ -331,16 +341,34 @@ def drawAssetTiles(app):
             drawLabel(f'{pythonRound(change * 100, 2)}%', 345 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
             drawGraph(app, 240 + (i * (stockTileWidth + 20)) + 20, 370, 140, 60, app.stocks[i])
     # Crops
-    # add price and change labels
+    price = app.crops[0].getCurrentPrice(app.monthIndex)
+    change = (price / app.crops[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
+    changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
     title = f'{app.crops[0].ticker}' if app.cropReleased else 'LOCKED'
     size = 20 if app.cropReleased else 15
     drawTile(app, 220, 540, otherTileWidth, otherTileHeight, title, size)
+    if app.cropReleased:
+        drawLabel(f'Balance', 250, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLine(250, 710, 250 + otherTileWidth - 60, 710, fill = 'black', dashes = True)
+        drawLabel(f'${pythonRound(app.crops[0].getValue(app.monthIndex), 2)}', 250 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${pythonRound(price, 2)}', 322.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'{pythonRound(change * 100, 2)}%', 637.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        drawGraph(app, 405, 600, 200, 80, app.crops[0])
 
     # Gold
-    # add price and change labels
+    # price = app.gold[0].getCurrentPrice(app.monthIndex)
+    # change = (price / app.gold[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
+    # changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
     title = 'Gold' if app.goldReleased else 'LOCKED'
     size = 20 if app.goldReleased else 15
     drawTile(app, 220 + otherTileWidth + 20, 540, otherTileWidth, otherTileHeight, title, size)
+    # if app.goldReleased:
+        # drawLabel(f'Balance', 840, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        # drawLine(840, 710, 840 + otherTileWidth - 60, 710, fill = 'black', dashes = True)
+        # drawLabel(f'${pythonRound(app.index[0].getValue(app.monthIndex), 2)}', 840 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        # drawLabel(f'${pythonRound(price, 2)}', 912.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        # drawLabel(f'{pythonRound(change * 100, 2)}%', 1227.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        # drawGraph(app, 995, 600, 200, 80, app.gold[0])
 
 def drawSideBar(app):
     # Drawing the side bar
