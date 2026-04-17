@@ -56,11 +56,13 @@ def getCleanData(filePath):
 
 # General class for each of the assets
 class Asset:
-    def __init__(self, ticker, priceData, color):
+    def __init__(self, ticker, priceData, color, isFractional = False):
         self.ticker = ticker
         self.priceData = priceData
         self.color = color
-        self.sharesOwned = 0
+        self.sharesOwned = 0.0
+        self.multiplier = 0
+        self.isFractional = isFractional
 
     def __repr__(self):
         return self.ticker
@@ -74,10 +76,40 @@ class Asset:
     def getValue(self, monthIndex):
         return self.sharesOwned * self.getCurrentPrice(monthIndex)
 
+class Button:
+    def __init__(self, x, y, w, h, label, asset, action, value = None):
+        self.x = x
+        self.y = y
+        self.width = w
+        self.height = h
+        self.text = label
+        self.asset = asset
+        self.action = action
+        self.value = value
+
+    def draw(self, app):
+
+        isHighlighted = False
+        if self.action == 'setMultiplier':
+            if self.asset == 'savings':
+                isHighlighted = (app.savingsMultiplier == self.value)
+            else:
+                isHighlighted = (self.asset.multiplier == self.value)
+
+        color = 'gold' if isHighlighted else 'oldLace'
+
+        drawRect(self.x + 2, self.y + 2, self.width, self.height, fill = rgb(75, 75, 75))
+        drawRect(self.x, self.y, self.width, self.height, fill = color, border = 'black', borderWidth = 2)
+        drawLabel(self.text, self.x + self.width/2, self.y + self.height/2, fill = 'black', size = 12, font = 'serif', bold = True, align = 'center')
+
+    def isClicked(self, mouseX, mouseY):
+        return (self.x <= mouseX <= self.x + self.width and self.y <= mouseY <= self.y + self.height)
+
 def loadAssets(categories):
     allStocks = []
     index = []
     allCrops = []
+    gold = []
 
     for folder in categories:
         color = categories[folder]
@@ -86,15 +118,20 @@ def loadAssets(categories):
                 path = os.path.join(folder, file)
                 ticker = file.replace('.csv', '')
                 prices = getCleanData(path)
-                asset = Asset(ticker, prices, color)
                 if folder == 'stock_data':
+                    asset = Asset(ticker, prices, color)
                     allStocks.append(asset)
                 elif folder == 'index_data':
+                    asset = Asset(ticker, prices, color, isFractional = True)
                     index.append(asset)
-                else:
+                elif folder == 'crop_data':
+                    asset = Asset(ticker, prices, color)
                     allCrops.append(asset)
+                # else:
+                #     # asset = Asset(ticker, prices, color, isFractional = True)
+                #     # gold.append(asset)
 
-    return allStocks, index, allCrops
+    return allStocks, index, allCrops, gold
 
 def getNetWorth(app):
     total = app.cash
@@ -104,6 +141,7 @@ def getNetWorth(app):
         total += crop.getValue(app.monthIndex)
     for index in app.index:
         total += index.getValue(app.monthIndex)
+    total += app.savingsBalance
     return pythonRound(total, 2)
 
 def onAppStart(app):
@@ -111,6 +149,7 @@ def onAppStart(app):
         'stock_data' : 'forestGreen',
         'index_data' : 'dodgerBlue',
         'crop_data' : 'coral'}
+        # 'gold_data' : 'gold'}
     
     # Fake names
     app.stockNames = {
@@ -137,7 +176,7 @@ def onAppStart(app):
     }
 
     # Loading the stock data, picking random things
-    app.allS, app.I, app.allC = loadAssets(categories)
+    app.allS, app.index, app.allC, app.gold = loadAssets(categories)
 
     # timing constants
     app.indexRelease = 6
@@ -145,6 +184,8 @@ def onAppStart(app):
     app.cropRelease = 18
     app.goldRelease = 24
 
+    app.savingsAPY = 0.01
+    
     restartApp(app)
 
     print(f"Loaded {len(app.stocks)} stocks, {len(app.index)} index, and {len(app.crops)} crop")
@@ -152,6 +193,8 @@ def onAppStart(app):
 def restartApp(app):
     # Basic stuff
     app.cash = 4000
+    app.savingsBalance = 0
+    app.stepCounter = 0
     app.monthIndex = 0
     app.stepsPerSecond = 1
     app.gameOver = False
@@ -163,21 +206,60 @@ def restartApp(app):
     app.cropReleased = False
     app.goldReleased = False
 
-    # picking random sample
+    # picking random sample (gold and index only have 1, so we dont need to sample)
     app.stocks = sample(app.allS, 5)
-    app.index = app.I
     app.crops = sample(app.allC, 1)
+    app.savingsMultiplier = 500
+
+    initializeButtons(app)
 
     # reseting ownership
-    for asset in app.allS + app.I + app.allC:
+    for asset in app.allS + app.index + app.allC:
         asset.sharesOwned = 0
+
+def initializeButtons(app):
+    app.buttons = []
+
+    # --- Savings Buttons --- 
+    createMultiplierRow(app, 'savings', 427.5, 210, [500, 1000, 5000, 'MAX'])
+    app.buttons.append(Button(685, 210, 80, 35, 'Deposit', 'savings', 'deposit', 100))
+    app.buttons.append(Button(250, 210, 80, 35, 'Withdraw', 'savings', 'withdraw', 100))
+
+    # --- Index Buttons ---
+    createMultiplierRow(app, app.index[0], 1022.5, 210, [500, 1000, 5000, 'MAX'])
+    app.buttons.append(Button(840, 210, 80, 35, 'Buy', app.index[0], 'buy', 100))
+    app.buttons.append(Button(1270, 210, 80, 35, 'Sell', app.index[0], 'sell', 100))
+
+def createMultiplierRow(app, asset, x, y, multipliers):
+    width = 35
+    height = 35
+    gap = 5
+    for i in range(len(multipliers)):
+        multiplier = multipliers[i]
+        label = str(multiplier)
+        button = Button(x + i * (width + gap), y, width, height, label, asset, 'setMultiplier', multiplier)
+        app.buttons.append(button)
+
+def isReleased(app,asset):
+    if asset == 'savings':
+        return True
+    elif asset in app.index:
+        return app.indexReleased
+    elif asset in app.stocks:
+        return app.stockReleased
+    elif asset in app.crops:
+        return app.cropReleased
+    else:
+        return app.goldReleased
 
 def onStep(app):
     takeStep(app)
-    
+
 def takeStep(app):
+    oldMonth = app.monthIndex
     if not app.paused:
-        app.monthIndex += 1
+        app.stepCounter += 1
+    app.monthIndex = app.stepCounter // 4
     if app.monthIndex == app.indexRelease:
         app.indexReleased = True
     if app.monthIndex == app.stockRelease:
@@ -187,6 +269,15 @@ def takeStep(app):
     if app.monthIndex == app.goldRelease:
         app.goldReleased = True
 
+    if app.monthIndex > oldMonth:
+        adjustSavingsBalance(app)
+        if app.monthIndex > 0 and app.monthIndex % 6 == 0:
+            app.cash += 4000
+    
+    if app.monthIndex >= 120:
+        app.gameOver = True
+        app.paused = True
+
 def onKeyPress(app, key):
     if key == 'r':
         restartApp(app)
@@ -194,6 +285,22 @@ def onKeyPress(app, key):
         app.paused = not app.paused
     elif key == 's':
         takeStep(app)
+
+def onMousePress(app, mouseX, mouseY):
+    for button in app.buttons:
+        if button.isClicked(mouseX, mouseY):
+            if button.action == 'setMultiplier':
+                if button.asset == 'savings':
+                    app.savingsMultiplier = button.value
+                else:
+                    button.asset.multiplier = button.value
+            elif button.action in ['buy', 'sell']:
+                executeTrade(app, button.action, button.asset)
+            elif button.action in ['deposit','withdraw']:
+                handleSavings(app, button.action)
+
+
+# --------- DRAWING FUNCTIONS ----------
 
 def drawYearBar(app):
     width = 160
@@ -221,25 +328,36 @@ def drawAssetTiles(app):
     otherTileWidth = 570
     otherTileHeight = 240
 
+    # Savings account
     drawTile(app, 220, 20, otherTileWidth, otherTileHeight, 'Savings Account', 20)
+    drawImage('savings-account.png', 455, 60, width = 100, height = 100 * 0.95588)
+    drawLabel(f'Balance', 250, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+    drawLine(250, 190, 250 + otherTileWidth - 60, 190, fill = 'black', dashes = True)
+    drawLabel(f'${pythonRound(app.savingsBalance, 2)}', 250 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
 
+    # Index fund
     title = 'Index Fund' if app.indexReleased else 'LOCKED'
     size = 20 if app.indexReleased else 15
     drawTile(app, 220 + otherTileWidth + 20, 20, otherTileWidth, otherTileHeight, title, size)
+    if app.indexReleased:
+        drawLabel(f'Balance', 840, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLine(840, 190, 840 + otherTileWidth - 60, 190, fill = 'black', dashes = True)
+        drawLabel(f'${pythonRound(app.index[0].getValue(app.monthIndex), 2)}', 840 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
 
+    # Stocks
     for i in range(5):
         title = app.stockNames[app.stocks[i].ticker] if app.stockReleased else 'LOCKED'
         drawTile(app, 220 + (i * (stockTileWidth + 20)), 280, stockTileWidth, stockTileHeight, title, 15)
     
+    # Crops
     title = f'{app.crops[0].ticker}' if app.cropReleased else 'LOCKED'
     size = 20 if app.cropReleased else 15
-    drawTile(app, 220, 540, otherTileWidth, otherTileHeight, f'{app.crops[0].ticker}', 20)
+    drawTile(app, 220, 540, otherTileWidth, otherTileHeight, title, size)
 
+    # Gold
     title = 'Gold' if app.goldReleased else 'LOCKED'
     size = 20 if app.goldReleased else 15
     drawTile(app, 220 + otherTileWidth + 20, 540, otherTileWidth, otherTileHeight, title, size)
-
-
 
 def drawSideBar(app):
     # Drawing the side bar
@@ -254,9 +372,70 @@ def drawSideBar(app):
 
     drawYearBar(app)
 
+def drawButtons(app):
+    for button in app.buttons:
+        if isReleased(app, button.asset):
+            button.draw(app)
+
+
+# --------- SAVINGS ACCOUNT FUNCTIONS ----------
+
+def adjustSavingsBalance(app):
+    app.savingsBalance *= (1 + app.savingsAPY / 12)
+
+
+# --------- TRADE EXECUTION FUNCTIONS ----------
+
+def executeTrade(app, action, asset):
+    price = asset.getCurrentPrice(app.monthIndex)
+    if action == 'buy':
+        if asset.multiplier == 'MAX':
+            cashToSpend = app.cash
+        else:
+            cashToSpend = asset.multiplier if asset.isFractional else asset.multiplier * price
+        
+        if asset.isFractional:
+            sharesToBuy = cashToSpend / price
+        else:
+            sharesToBuy = cashToSpend // price
+
+        if app.cash >= sharesToBuy * price and sharesToBuy > 0:
+            app.cash -= sharesToBuy * price
+            asset.sharesOwned += sharesToBuy
+    
+    elif action == 'sell':
+        if asset.multiplier == 'MAX':
+            sharesToSell = asset.sharesOwned
+        else:
+            if asset.isFractional:
+                sharesToSell = min(asset.multiplier / price, asset.sharesOwned)
+            else:
+                sharesToSell = asset.multiplier
+        
+        if asset.sharesOwned >= sharesToSell and sharesToSell > 0:
+            app.cash += sharesToSell * price
+            asset.sharesOwned -= sharesToSell
+
+def handleSavings(app, action):
+    if app.savingsMultiplier == 'MAX':
+        amount = app.cash if action == 'deposit' else app.savingsBalance
+    else:
+        amount = app.savingsMultiplier
+    
+    if action == 'deposit' and app.cash >= amount:
+        app.cash -= amount
+        app.savingsBalance += amount
+    elif action == 'withdraw' and app.savingsBalance >= amount:
+        app.cash += amount
+        app.savingsBalance -= amount
+
+
+
+# Redraw all
 def redrawAll(app):
     drawSideBar(app)
     drawAssetTiles(app)
+    drawButtons(app)
 
     # drawLabel(f"Loaded {app.stocks} stocks, {app.index} index, and {app.crops} crop", 20, 550, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
 
