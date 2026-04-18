@@ -92,9 +92,9 @@ def loadAssets(categories):
                 elif folder == 'crop_data':
                     asset = Asset(ticker, prices, color)
                     allCrops.append(asset)
-                # else:
-                #     # asset = Asset(ticker, prices, color, isFractional = True)
-                #     # gold.append(asset)
+                else:
+                    asset = Asset(ticker, prices, color, isFractional = True)
+                    gold.append(asset)
 
     return allStocks, index, allCrops, gold
 
@@ -102,8 +102,8 @@ def onAppStart(app):
     categories = {
         'stock_data' : 'forestGreen',
         'index_data' : 'dodgerBlue',
-        'crop_data' : 'coral'}
-        # 'gold_data' : 'gold'}
+        'crop_data' : 'coral',
+        'gold_data' : 'gold'}
     
     # Fake names
     app.stockNames = {
@@ -131,6 +131,7 @@ def onAppStart(app):
 
     # Loading the stock data, picking random things
     app.allS, app.index, app.allC, app.gold = loadAssets(categories)
+    print(app.gold)
 
     # timing constants
     app.indexRelease = 6
@@ -199,9 +200,9 @@ def initializeButtons(app):
     app.buttons.append(Button(680, 730, 80, 35, 'Sell', app.crops[0], 'sell', 100))
 
     # --- Gold Buttons ---
-    # createMultiplierRow(app, app.gold[0], 1022.5, 730, [500, 1000, 5000, 'MAX'])
-    # app.buttons.append(Button(840, 730, 80, 35, 'Buy', app.gold[0], 'buy', 100))
-    # app.buttons.append(Button(1270, 730, 80, 35, 'Sell', app.gold[0], 'sell', 100))
+    createMultiplierRow(app, app.gold[0], 1022.5, 730, [500, 1000, 5000, 'MAX'])
+    app.buttons.append(Button(840, 730, 80, 35, 'Buy', app.gold[0], 'buy', 100))
+    app.buttons.append(Button(1270, 730, 80, 35, 'Sell', app.gold[0], 'sell', 100))
 
 def createMultiplierRow(app, asset, x, y, multipliers):
     width = 35 if asset not in app.stocks else 25
@@ -312,7 +313,7 @@ def drawAssetTiles(app):
     drawImage('savings-account.png', 455, 60, width = 100, height = 100 * 0.95588)
     drawLabel(f'Balance', 250, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
     drawLine(250, 190, 250 + otherTileWidth - 60, 190, fill = 'black', dashes = True)
-    drawLabel(f'${pythonRound(app.savingsBalance, 2)}', 250 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+    drawLabel(f'${app.savingsBalance:,.2f}', 250 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
 
     # Index fund
     price = app.index[0].getCurrentPrice(app.monthIndex)
@@ -324,9 +325,9 @@ def drawAssetTiles(app):
     if app.indexReleased:
         drawLabel(f'Balance', 840, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLine(840, 190, 840 + otherTileWidth - 60, 190, fill = 'black', dashes = True)
-        drawLabel(f'${pythonRound(app.index[0].getValue(app.monthIndex), 2)}', 840 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
-        drawLabel(f'${pythonRound(price, 2)}', 912.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-        drawLabel(f'{pythonRound(change * 100, 2)}%', 1227.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${app.index[0].getValue(app.monthIndex):,.2f}', 840 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${price:,.2f}', 912.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'{(change * 100):.2f}%', 1227.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
         drawGraph(app, 995, 80, 200, 80, app.index[0])
 
     # Stocks
@@ -337,8 +338,8 @@ def drawAssetTiles(app):
         title = app.stockNames[app.stocks[i].ticker] if app.stockReleased else 'LOCKED'
         drawTile(app, 220 + (i * (stockTileWidth + 20)), 280, stockTileWidth, stockTileHeight, title, 15)
         if app.stockReleased:
-            drawLabel(f'${pythonRound(price, 2)}', 240 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-            drawLabel(f'{pythonRound(change * 100, 2)}%', 345 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+            drawLabel(f'${price:,.2f}', 240 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+            drawLabel(f'{(change * 100):.2f}%', 345 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
             drawGraph(app, 240 + (i * (stockTileWidth + 20)) + 20, 370, 140, 60, app.stocks[i])
     # Crops
     price = app.crops[0].getCurrentPrice(app.monthIndex)
@@ -350,25 +351,25 @@ def drawAssetTiles(app):
     if app.cropReleased:
         drawLabel(f'Balance', 250, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLine(250, 710, 250 + otherTileWidth - 60, 710, fill = 'black', dashes = True)
-        drawLabel(f'${pythonRound(app.crops[0].getValue(app.monthIndex), 2)}', 250 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
-        drawLabel(f'${pythonRound(price, 2)}', 322.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-        drawLabel(f'{pythonRound(change * 100, 2)}%', 637.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${app.crops[0].getValue(app.monthIndex):,.2f}', 250 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${price:,.2f}', 322.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'{(change * 100):.2f}%', 637.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
         drawGraph(app, 405, 600, 200, 80, app.crops[0])
 
     # Gold
-    # price = app.gold[0].getCurrentPrice(app.monthIndex)
-    # change = (price / app.gold[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
-    # changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
+    price = app.gold[0].getCurrentPrice(app.monthIndex)
+    change = (price / app.gold[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
+    changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
     title = 'Gold' if app.goldReleased else 'LOCKED'
     size = 20 if app.goldReleased else 15
     drawTile(app, 220 + otherTileWidth + 20, 540, otherTileWidth, otherTileHeight, title, size)
-    # if app.goldReleased:
-        # drawLabel(f'Balance', 840, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
-        # drawLine(840, 710, 840 + otherTileWidth - 60, 710, fill = 'black', dashes = True)
-        # drawLabel(f'${pythonRound(app.index[0].getValue(app.monthIndex), 2)}', 840 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
-        # drawLabel(f'${pythonRound(price, 2)}', 912.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-        # drawLabel(f'{pythonRound(change * 100, 2)}%', 1227.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-        # drawGraph(app, 995, 600, 200, 80, app.gold[0])
+    if app.goldReleased:
+        drawLabel(f'Balance', 840, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLine(840, 710, 840 + otherTileWidth - 60, 710, fill = 'black', dashes = True)
+        drawLabel(f'${app.index[0].getValue(app.monthIndex):,.2f}', 840 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${price:,.2f}', 912.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'{(change * 100):.2f}%', 1227.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+        drawGraph(app, 995, 600, 200, 80, app.gold[0])
 
 def drawSideBar(app):
     # Drawing the side bar
@@ -377,9 +378,9 @@ def drawSideBar(app):
     drawImage('piggy-bank.png', 10, 80, width = 180, height = 180 * 0.54585798816)
     drawLabel(f'YEAR {app.monthIndex // 12} OF 10', 20, 30, fill = 'beige', size = 20, font = 'serif', bold = True, align = 'left')
     drawLabel('POCKET CASH', 20, 400, fill = 'beige', size = 12, font = 'serif', bold = True, align = 'left')
-    drawLabel(f'${pythonRound(float(app.cash), 2)}', 20, 420, fill = 'beige', size = 25, font = 'serif', bold = True, align = 'left')
+    drawLabel(f'${app.cash:,.2f}', 20, 420, fill = 'beige', size = 25, font = 'serif', bold = True, align = 'left')
     drawLabel('NET WORTH', 20, 450, fill = 'beige', size = 12, font = 'serif', bold = True, align = 'left')
-    drawLabel(f'${getNetWorth(app)}', 20, 470, fill = 'beige', size = 25, font = 'serif', bold = True, align = 'left')
+    drawLabel(f'${getNetWorth(app):,.2f}', 20, 470, fill = 'beige', size = 25, font = 'serif', bold = True, align = 'left')
 
     drawYearBar(app)
 
@@ -479,6 +480,8 @@ def getNetWorth(app):
         total += crop.getValue(app.monthIndex)
     for index in app.index:
         total += index.getValue(app.monthIndex)
+    for gold in app.gold:
+        total += gold.getValue(app.monthIndex)
     total += app.savingsBalance
     return pythonRound(total, 2)
 
