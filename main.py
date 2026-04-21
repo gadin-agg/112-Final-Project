@@ -166,14 +166,6 @@ def onAppStart(app):
     app.totalSlides = 5
     app.simulationEnabled = False
 
-    # Buttons
-    app.titleButton = Button(app.width//2 - 100, app.height//2 + 100, 200, 50, 'Start Tutorial', None, 'startTutorial')
-    app.tutorialButtons = [Button(app.width//2 - 240, app.height//2, 40, 40, '<', None, 'prevSlide'), 
-                           Button(app.width//2 + 200, app.height//2, 40, 40, '>', None, 'nextSlide')]
-    app.startButton = Button(app.width//2 - 100, app.height//2 - 200, 200, 50, 'Start Game', None, 'startGame')
-    app.simulationButton = Button(5, 730, 190, 50, 'Run Portfolio Simulation', None, 'runSim')
-    
-
     restartApp(app)
 
     print(f"Loaded {len(app.stocks)} stocks, {len(app.index)} index, and {len(app.crops)} crop")
@@ -184,8 +176,7 @@ def restartApp(app):
     app.savingsBalance = 0
     app.stepCounter = 0
     app.monthIndex = 0
-    app.stepsPerSecond = 1
-    app.gameOver = False
+    app.stepsPerSecond = 30
     app.paused = True
     app.screen = 'title'
 
@@ -202,7 +193,18 @@ def restartApp(app):
 
     app.tutorialSlide = 0
 
+    app.fadeOpacity = 0
+    app.fadeDirection = 0
+    app.nextScreen = None
+
+    app.titleButton = Button(app.width//2 - 100, app.height//2 + 100, 200, 50, 'Start Tutorial', None, 'startTutorial')
+    app.tutorialButtons = [Button(app.width//2 - 240, app.height//2, 40, 40, '<', None, 'prevSlide'), 
+                           Button(app.width//2 + 200, app.height//2, 40, 40, '>', None, 'nextSlide')]
+    app.startButton = Button(app.width//2 - 100, app.height//2 - 200, 200, 50, 'Start Game', None, 'startGame')
+    app.simulationButton = Button(5, 730, 190, 50, 'Run Portfolio Simulation', None, 'runSim')
+
     initializeButtons(app)
+
 
     # reseting ownership
     for asset in app.allS + app.index + app.allC:
@@ -266,10 +268,29 @@ def onStep(app):
     takeStep(app)
 
 def takeStep(app):
+    if app.monthIndex >= 120 and app.screen == 'main' and app.fadeDirection == 0:
+        app.nextScreen = 'gameOver'
+        app.fadeDirection = 1
+        app.paused = True
+
     oldMonth = app.monthIndex
     if not app.paused:
         app.stepCounter += 1
-    app.monthIndex = app.stepCounter // 3
+    app.monthIndex = app.stepCounter // 60
+
+    if app.fadeDirection == 1:
+        app.fadeOpacity += 5
+        if app.fadeOpacity >= 100:
+            app.fadeOpacity = 100
+            app.screen = app.nextScreen
+            app.fadeDirection = -1
+            
+    elif app.fadeDirection == -1:
+        app.fadeOpacity -= 5
+        if app.fadeOpacity <= 0:
+            app.fadeOpacity = 0
+            app.fadeDirection = 0
+
     if app.monthIndex == app.indexRelease:
         app.indexReleased = True
     if app.monthIndex == app.stockRelease:
@@ -284,10 +305,7 @@ def takeStep(app):
         if app.monthIndex > 0 and app.monthIndex % 6 == 0:
             app.cash += 4000
     
-    if app.monthIndex >= 120:
-        app.gameOver = True
-        app.paused = True
-        app.screen = 'gameOver'
+    
 
 def onKeyPress(app, key):
     if key == 'r':
@@ -295,7 +313,8 @@ def onKeyPress(app, key):
     elif key == 'p':
         app.paused = not app.paused
     elif key == 's':
-        takeStep(app)
+        if app.monthIndex < 120:
+            app.stepCounter += 60
     elif key == 'b':
         app.stockReleased = True
         app.indexReleased = True
@@ -304,12 +323,13 @@ def onKeyPress(app, key):
         app.screen = 'main'
 
     elif key == 'm':
-        testSimulation(app)
+        app.stepCounter = 60 * 120
 
 def onMousePress(app, mouseX, mouseY):
     if app.screen == 'title':
         if app.titleButton.isClicked(mouseX, mouseY):
-            app.screen = 'tutorial'
+            app.nextScreen = 'tutorial'
+            app.fadeDirection = 1
     
     elif app.screen == 'tutorial':
         for button in app.tutorialButtons:
@@ -319,7 +339,8 @@ def onMousePress(app, mouseX, mouseY):
                 elif button.action == 'nextSlide' and app.tutorialSlide < app.totalSlides:
                     app.tutorialSlide += 1
         if app.startButton.isClicked(mouseX, mouseY):
-            app.screen = 'main'
+            app.nextScreen = 'main'
+            app.fadeDirection = 1
             app.paused = False
 
     elif app.screen == 'main':
@@ -391,15 +412,8 @@ def handleSavings(app, action):
 
 def getNetWorth(app):
     total = app.cash
-    # cant i just do for asset in app.stocks + index + ...?
-    for stock in app.stocks:
-        total += stock.getValue(app.monthIndex)
-    for crop in app.crops:
-        total += crop.getValue(app.monthIndex)
-    for index in app.index:
-        total += index.getValue(app.monthIndex)
-    for gold in app.gold:
-        total += gold.getValue(app.monthIndex)
+    for asset in (app.stocks + app.crops + app.index + app.gold):
+        total += asset.getValue(app.monthIndex)
     total += app.savingsBalance
     return pythonRound(total, 2)
 
@@ -694,6 +708,8 @@ def drawTutorialScreen(app):
     drawTutorialCircles(app)
     drawButtons(app)
 
+
+# The function below was written by AI
 def drawSimulationGraph(app, x, y, width, height):
     # 1. Run the simulation and get starting value
     paths = runMonteCarloSimulation(app) 
@@ -767,6 +783,13 @@ def drawSimulationGraph(app, x, y, width, height):
         labelX = x + (m * stepX)
         drawLabel(f"+{m} months", labelX, y + height + 15, size=10, font='serif')
         
+def drawGameOverScreen(app):
+    drawRect(0, 0, app.width, app.height, fill = rgb(158, 158, 138))
+    drawLabel('CONGRATULATIONS!', app.width//2, 40, size = 20, bold = True, font = 'serif', fill = rgb(65, 70, 58))
+    drawLabel('In 10 years, you made: ', app.width//2, 70, size = 15, font = 'serif', fill = rgb(65, 70, 58))
+    drawLabel(f'${getNetWorth(app):,.2f}', app.width//2, 120, size = 40, bold = True, font = 'serif', fill = rgb(65, 70, 58))
+
+
 
 def redrawAll(app):
     drawButtons(app)
@@ -774,15 +797,21 @@ def redrawAll(app):
         drawTitleScreen(app)
 
     elif app.screen == 'tutorial':
-        drawTutorialScreen(app)
-        
-    else:
+        drawTutorialScreen(app)    
+    
+    elif app.screen == 'main':
         drawSideBar(app)
         drawAssetTiles(app)
         drawButtons(app)
+    
+    elif app.screen == 'gameOver':
+        drawGameOverScreen(app)
 
         if app.simulationEnabled == True:
             drawTile(app, app.width//2 + 100 - 300, app.height//2 - 200, 600, 400, 'Monte Carlo Simulation', 20)
             drawSimulationGraph(app, app.width//2 - 150, app.height//2 - 150, 400, 300)
+    
+    if app.fadeOpacity > 0:
+        drawRect(0, 0, app.width, app.height, fill='black', opacity=app.fadeOpacity)
 
 runApp(width=1400, height=800)
