@@ -1,6 +1,7 @@
 import os
 import pandas as pd
-from random import sample
+from random import sample, normalvariate
+import statistics
 from cmu_graphics import *
 
 # Cleaning the CSV file
@@ -26,6 +27,11 @@ class Asset:
         self.sharesOwned = 0.0
         self.multiplier = 0
         self.isFractional = isFractional
+        
+        # monte carlo
+        self.returns = self.calculateReturns()
+        self.volatility = statistics.stdev(self.returns) if len(self.returns) > 1 else 0.05
+        self.meanReturn = statistics.mean(self.returns) if len(self.returns) > 1 else 0
 
     def __repr__(self):
         return self.ticker
@@ -38,6 +44,14 @@ class Asset:
 
     def getValue(self, monthIndex):
         return self.sharesOwned * self.getCurrentPrice(monthIndex)
+    
+    def calculateReturns(self):
+        returns = []
+        for i in range(1, len(self.priceData)):
+            prev = self.priceData[i-1]
+            curr = self.priceData[i]
+            returns.append((curr-prev) / prev)
+        return returns
 
 class Button:
     def __init__(self, x, y, w, h, label, asset, action, value = None):
@@ -64,7 +78,7 @@ class Button:
         if self.value == 'MAX' and self.asset in app.stocks:
             size = 8
         elif self.value == None:
-            size = 20
+            size = 16
         else:
             size = 12
         
@@ -150,10 +164,14 @@ def onAppStart(app):
     app.tutorialScreenImage = 'tutorial-background.png'
     app.tutorialImages = [None, 'progress-bar.png', 'pocket-cash.png', 'opportunities.png', 'lesson.png', None]
     app.totalSlides = 5
+    app.simulationEnabled = False
+
+    # Buttons
     app.titleButton = Button(app.width//2 - 100, app.height//2 + 100, 200, 50, 'Start Tutorial', None, 'startTutorial')
     app.tutorialButtons = [Button(app.width//2 - 240, app.height//2, 40, 40, '<', None, 'prevSlide'), 
                            Button(app.width//2 + 200, app.height//2, 40, 40, '>', None, 'nextSlide')]
     app.startButton = Button(app.width//2 - 100, app.height//2 - 200, 200, 50, 'Start Game', None, 'startGame')
+    app.simulationButton = Button(5, 730, 190, 50, 'Run Portfolio Simulation', None, 'runSim')
     
 
     restartApp(app)
@@ -283,6 +301,10 @@ def onKeyPress(app, key):
         app.indexReleased = True
         app.cropReleased = True
         app.goldReleased = True
+        app.screen = 'main'
+
+    elif key == 'm':
+        testSimulation(app)
 
 def onMousePress(app, mouseX, mouseY):
     if app.screen == 'title':
@@ -312,6 +334,8 @@ def onMousePress(app, mouseX, mouseY):
                     executeTrade(app, button.action, button.asset)
                 elif button.action in ['deposit','withdraw']:
                     handleSavings(app, button.action)
+        if app.simulationButton.isClicked(mouseX, mouseY):
+            app.simulationEnabled = not app.simulationEnabled
 
 
 # --------- SAVINGS ACCOUNT FUNCTIONS ----------
@@ -367,6 +391,7 @@ def handleSavings(app, action):
 
 def getNetWorth(app):
     total = app.cash
+    # cant i just do for asset in app.stocks + index + ...?
     for stock in app.stocks:
         total += stock.getValue(app.monthIndex)
     for crop in app.crops:
@@ -378,6 +403,54 @@ def getNetWorth(app):
     total += app.savingsBalance
     return pythonRound(total, 2)
 
+# The function below was written mostly by AI
+def runMonteCarloSimulation(app):
+    simulations = 100
+    projectionMonths = 12
+    allSimulationPaths = []
+    for i in range(simulations):
+        currentPath = [getNetWorth(app)]
+
+        for j in range(projectionMonths):
+            simulatedChange = 0
+            for asset in (app.stocks + app.index + app.crops + app.gold):
+                if asset.sharesOwned > 0:
+                    move = normalvariate(asset.meanReturn, asset.volatility)
+                    simulatedChange += asset.getValue(app.monthIndex) * move
+                
+            nextValue = currentPath[-1] + simulatedChange
+            currentPath.append(nextValue)
+
+        allSimulationPaths.append(currentPath)
+    return allSimulationPaths
+
+# Omit, do not grade. Testing function, written by AI.
+def testSimulation(app):
+    print("\n--- Running Monte Carlo Test (12-Month Projection) ---")
+    print(f"Starting Net Worth: ${getNetWorth(app):,.2f}")
+    
+    # Run the simulation
+    paths = runMonteCarloSimulation(app) # This calls the function we drafted
+    
+    # Get the final value from every path (the last item in each list)
+    finalValues = [path[-1] for path in paths]
+    finalValues.sort()
+    
+    # Calculate key statistics
+    avgOutcome = sum(finalValues) / len(finalValues)
+    bearCase = finalValues[5]  # 5th percentile (out of 100)
+    bullCase = finalValues[95] # 95th percentile (out of 100)
+    
+    print(f"Most Likely (Average): ${avgOutcome:,.2f}")
+    print(f"Bear Case (5th %):    ${bearCase:,.2f}")
+    print(f"Bull Case (95th %):   ${bullCase:,.2f}")
+    
+    # Sanity Check
+    if bearCase < avgOutcome < bullCase:
+        print(">>> SUCCESS: Simulation logic is statistically sound.")
+    else:
+        print(">>> WARNING: Simulation distribution is skewed.")
+    print("----------------------------------------------------\n")
 
 # --------- DRAWING FUNCTIONS ----------
 
@@ -446,6 +519,7 @@ def drawAssetTiles(app):
             drawLabel(f'${price:,.2f}', 240 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
             drawLabel(f'{(change * 100):.2f}%', 345 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
             drawGraph(app, 240 + (i * (stockTileWidth + 20)) + 20, 370, 140, 60, app.stocks[i])
+    
     # Crops
     price = app.crops[0].getCurrentPrice(app.monthIndex)
     change = (price / app.crops[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
@@ -504,6 +578,7 @@ def drawButtons(app):
         for button in app.buttons:
             if isReleased(app, button.asset):
                 button.draw(app)
+        app.simulationButton.draw(app)
 
 def drawGraph(app, x, y, width, height, asset):
     # get the data
@@ -619,10 +694,85 @@ def drawTutorialScreen(app):
     drawTutorialCircles(app)
     drawButtons(app)
 
+def drawSimulationGraph(app, x, y, width, height):
+    # 1. Run the simulation and get starting value
+    paths = runMonteCarloSimulation(app) 
+    startValue = getNetWorth(app)
+    numMonths = 13 # Month 0 to Month 12
+    
+    # 2. Extract monthly stats to find the "window"
+    # We look at the final month to set our Y-axis zoom
+    finalValues = sorted([p[-1] for p in paths])
+    lowBound = finalValues[5]
+    highBound = finalValues[95]
+    
+    # Set the zoom window with some padding
+    minVal = min(lowBound, startValue) * 0.9
+    maxVal = max(highBound, startValue) * 1.1
+    valRange = maxVal - minVal if maxVal != minVal else 1
+
+    # 3. Build the coordinates
+    upperPoints = []
+    lowerPoints = []
+    medianPoints = []
+    stepX = width / (numMonths - 1)
+
+    for m in range(numMonths):
+        # Sort values for this specific month across all 100 paths
+        monthlyValues = sorted([p[m] for p in paths])
+        
+        # Calculate percentiles
+        lowPrice = monthlyValues[5]
+        medPrice = monthlyValues[50]
+        highPrice = monthlyValues[95]
+        
+        currX = x + (m * stepX)
+        
+        # Convert dollar values to Y-coordinates
+        # Formula: yPos = boxBottom - (percentOfRange * boxHeight)
+        yLow = (y + height) - ((lowPrice - minVal) / valRange * height)
+        yMed = (y + height) - ((medPrice - minVal) / valRange * height)
+        yHigh = (y + height) - ((highPrice - minVal) / valRange * height)
+        
+        upperPoints.append((currX, yHigh))
+        lowerPoints.append((currX, yLow))
+        medianPoints.append((currX, yMed))
+
+    # 4. Draw the Shaded "Cone"
+    # Create one continuous list of points: forward on top, backward on bottom
+    conePoints = []
+    for p in upperPoints: conePoints.extend([p[0], p[1]])
+    for p in reversed(lowerPoints): conePoints.extend([p[0], p[1]])
+    
+    drawPolygon(*conePoints, fill='gold', opacity=25)
+    
+    # 5. Draw the Median Path (The "Expected" line)
+    for i in range(len(medianPoints) - 1):
+        drawLine(medianPoints[i][0], medianPoints[i][1], 
+                 medianPoints[i+1][0], medianPoints[i+1][1], 
+                 fill='darkGoldenrod', lineWidth=2, dashes=True)
+
+    # 6. Add GROUNDING LABELS (So the user knows what they are seeing)
+    # Use the dollar values from the last indices of our sorted lists
+    drawLabel(f"Bull: ${highBound:,.0f}", x + width + 5, upperPoints[-1][1], 
+              align='left', size=12, font='serif', bold=True, fill='forestGreen')
+    drawLabel(f"Expected: ${finalValues[50]:,.0f}", x + width + 5, medianPoints[-1][1], 
+              align='left', size=12, font='serif', bold=True, fill='darkGoldenrod')
+    drawLabel(f"Bear: ${lowBound:,.0f}", x + width + 5, lowerPoints[-1][1], 
+              align='left', size=12, font='serif', bold=True, fill='fireBrick')
+
+    # 7. Draw Axis and Month Markers
+    drawLine(x, y + height, x + width, y + height, fill='black', lineWidth=1)
+    for m in [0, 6, 12]:
+        labelX = x + (m * stepX)
+        drawLabel(f"+{m} months", labelX, y + height + 15, size=10, font='serif')
+        
+
 def redrawAll(app):
     drawButtons(app)
     if app.screen == 'title':
         drawTitleScreen(app)
+
     elif app.screen == 'tutorial':
         drawTutorialScreen(app)
         
@@ -630,5 +780,9 @@ def redrawAll(app):
         drawSideBar(app)
         drawAssetTiles(app)
         drawButtons(app)
+
+        if app.simulationEnabled == True:
+            drawTile(app, app.width//2 + 100 - 300, app.height//2 - 200, 600, 400, 'Monte Carlo Simulation', 20)
+            drawSimulationGraph(app, app.width//2 - 150, app.height//2 - 150, 400, 300)
 
 runApp(width=1400, height=800)
