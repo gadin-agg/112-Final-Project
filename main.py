@@ -1,3 +1,10 @@
+# Things left to do
+# 1. add number of shares owned to each tile
+# 2. make a graph class
+# 3. add the graph complexity part
+# 4. finish end screen
+
+
 import os
 import pandas as pd
 from random import sample, normalvariate
@@ -89,6 +96,92 @@ class Button:
     def isClicked(self, mouseX, mouseY):
         return (self.x <= mouseX <= self.x + self.width and self.y <= mouseY <= self.y + self.height)
 
+class Graph:
+    def __init__(self, x, y, width, height, asset):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.asset = asset
+        self.fillOpacity = 30
+        
+        # Hover state
+        self.isHovering = False
+        self.hoverX = 0
+        self.hoverY = 0
+        self.hoverValue = 0
+
+    def draw(self, app):
+        # get the data
+        startMonth = max(0, app.monthIndex - 10)
+        dataSlice = self.asset.priceData[startMonth:app.monthIndex + 1]
+        if len(dataSlice) < 2: return
+
+        # scaling the graph
+        minPrice, maxPrice = min(dataSlice), max(dataSlice)
+        priceRange = maxPrice - minPrice if maxPrice != minPrice else 1
+        stepX = self.width / 10
+
+        # color logic
+        if self.asset.priceData[app.monthIndex] >= self.asset.priceData[app.monthIndex - 1]:
+            color = 'forestGreen'
+        else:
+            color = 'fireBrick'
+
+        polygonPoints = []
+        linePoints = []
+
+        for i in range(len(dataSlice)):
+            currX = self.x + (i * stepX)
+            currY = self.y + self.height - ((dataSlice[i] - minPrice) / priceRange * self.height)
+            polygonPoints.extend([currX, currY])
+            linePoints.append((currX, currY))
+
+        # close the polygon by going to the bottom right and then back to the start
+        polygonPoints.extend([self.x + (len(dataSlice)-1) * stepX, self.y + self.height])
+        polygonPoints.extend([self.x, self.y + self.height])
+
+        # shaded area of the graph
+        drawPolygon(*polygonPoints, fill=color, opacity=self.fillOpacity)
+
+        # draw the line on top
+        for i in range(len(linePoints) - 1):
+            drawLine(linePoints[i][0], linePoints[i][1], linePoints[i+1][0], linePoints[i+1][1], fill=color, lineWidth=2)
+
+        if self.isHovering:
+            drawCircle(self.hoverX, self.hoverY, 4, fill='white', border='black', borderWidth=1)
+            drawRect(self.hoverX - 35, self.hoverY - 35, 70, 20, fill='black', opacity=80)
+            drawLabel(f"${self.hoverValue:,.2f}", self.hoverX, self.hoverY - 25, fill='white', size=11, bold=True, align='center')
+
+    def updateHover(self, mouseX, mouseY, app):
+        # check if in box
+        if not (self.x <= mouseX <= self.x + self.width and self.y <= mouseY <= self.y + self.height):
+            self.isHovering = False
+            return False
+        
+        startMonth = max(0, app.monthIndex - 10)
+        dataSlice = self.asset.priceData[startMonth:app.monthIndex + 1]
+        stepX = self.width / 10
+
+        idx = int(pythonRound((mouseX - self.x) / stepX))
+        idx = max(0, min(idx, len(dataSlice) - 1))
+
+        minP, maxP = min(dataSlice), max(dataSlice)
+        priceRange = maxP - minP if maxP != minP else 1
+        lineY = (self.y + self.height) - ((dataSlice[idx] - minP) / priceRange * self.height)
+
+        if lineY <= mouseY <= (self.y + self.height):
+            self.isHovering = True
+            self.hoverValue = dataSlice[idx]
+            self.hoverX = self.x + (idx * stepX)
+            self.hoverY = lineY
+            return True
+        else:
+            self.isHovering = False
+            return False
+    
+        
+
 def loadAssets(categories):
     allStocks = []
     index = []
@@ -159,10 +252,10 @@ def onAppStart(app):
     app.goldRelease = 24
 
     app.savingsAPY = 0.01
-    
+
     app.titleScreenImage = 'opening-screen.png'
     app.tutorialScreenImage = 'tutorial-background.png'
-    app.tutorialImages = [None, 'progress-bar.png', 'pocket-cash.png', 'opportunities.png', 'lesson.png', None]
+    app.tutorialImages = [None, 'progress-bar.png', 'pocket-cash.png', 'opportunities.png', 'portfolio-simulation.png', None]
     app.totalSlides = 5
     app.simulationEnabled = False
 
@@ -197,6 +290,9 @@ def restartApp(app):
     app.fadeDirection = 0
     app.nextScreen = None
 
+    app.lastSimMonth = -1
+    app.latestSimPaths = []
+
     app.titleButton = Button(app.width//2 - 100, app.height//2 + 100, 200, 50, 'Start Tutorial', None, 'startTutorial')
     app.tutorialButtons = [Button(app.width//2 - 240, app.height//2, 40, 40, '<', None, 'prevSlide'), 
                            Button(app.width//2 + 200, app.height//2, 40, 40, '>', None, 'nextSlide')]
@@ -204,6 +300,7 @@ def restartApp(app):
     app.simulationButton = Button(5, 730, 190, 50, 'Run Portfolio Simulation', None, 'runSim')
 
     initializeButtons(app)
+    initializeGraphs(app)
 
 
     # reseting ownership
@@ -252,7 +349,22 @@ def createMultiplierRow(app, asset, x, y, multipliers):
         button = Button(x + i * (width + gap), y, width, height, label, asset, 'setMultiplier', multiplier)
         app.buttons.append(button)
 
-def isReleased(app,asset):
+def initializeGraphs(app):
+    app.graphs = []
+
+    # index
+    app.graphs.append(Graph(995, 80, 200, 80, app.index[0]))
+    
+    # stocks
+    for i in range(5):
+        x = 240 + (i * (216 + 20)) + 20
+        app.graphs.append(Graph(x, 370, 140, 60, app.stocks[i]))
+        
+    # crops, gold
+    app.graphs.append(Graph(405, 600, 200, 80, app.crops[0]))
+    app.graphs.append(Graph(995, 600, 200, 80, app.gold[0]))
+
+def isReleased(app, asset):
     if asset == 'savings':
         return True
     elif asset in app.index:
@@ -304,6 +416,8 @@ def takeStep(app):
         adjustSavingsBalance(app)
         if app.monthIndex > 0 and app.monthIndex % 6 == 0:
             app.cash += 4000
+
+        app.latestSimPaths = runMonteCarloSimulation(app)
     
     
 
@@ -321,9 +435,17 @@ def onKeyPress(app, key):
         app.cropReleased = True
         app.goldReleased = True
         app.screen = 'main'
-
+        app.paused = False
     elif key == 'm':
         app.stepCounter = 60 * 120
+
+def onMouseMove(app, mouseX, mouseY):
+    for graph in app.graphs:
+        graph.updateHover(mouseX, mouseY, app)
+        if graph.updateHover(mouseX, mouseY, app):
+            graph.fillOpacity = 60
+        else:
+            graph.fillOpacity = 30
 
 def onMousePress(app, mouseX, mouseY):
     if app.screen == 'title':
@@ -436,6 +558,7 @@ def runMonteCarloSimulation(app):
             currentPath.append(nextValue)
 
         allSimulationPaths.append(currentPath)
+
     return allSimulationPaths
 
 # Omit, do not grade. Testing function, written by AI.
@@ -494,12 +617,7 @@ def drawTile(app, x, y, width, height, assetName, size):
     drawRect(x + 7, y + 7, width - 10, height - 10, fill = None, border = 'black', borderWidth = 3)
     drawLabel(assetName, x + width/2, y + shift, fill = 'black', size = size, font = 'serif', bold = True, align = 'center')
 
-def drawAssetTiles(app):
-    stockTileWidth = 216
-    stockTileHeight = 240
-    otherTileWidth = 570
-    otherTileHeight = 240
-
+def drawSavingsTile(app, otherTileWidth, otherTileHeight):
     # Savings account
     drawTile(app, 220, 20, otherTileWidth, otherTileHeight, 'Savings Account', 20)
     drawImage('savings-account.png', 455, 60, width = 100, height = 100 * 0.95588)
@@ -507,6 +625,7 @@ def drawAssetTiles(app):
     drawLine(250, 190, 250 + otherTileWidth - 60, 190, fill = 'black', dashes = True)
     drawLabel(f'${app.savingsBalance:,.2f}', 250 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
 
+def drawIndexTile(app, otherTileWidth, otherTileHeight):
     # Index fund
     price = app.index[0].getCurrentPrice(app.monthIndex)
     change = (price / app.index[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
@@ -520,8 +639,8 @@ def drawAssetTiles(app):
         drawLabel(f'${app.index[0].getValue(app.monthIndex):,.2f}', 840 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLabel(f'${price:,.2f}', 912.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
         drawLabel(f'{(change * 100):.2f}%', 1227.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-        drawGraph(app, 995, 80, 200, 80, app.index[0])
 
+def drawStockTiles(app, stockTileWidth, stockTileHeight):
     # Stocks
     for i in range(5):
         price = app.stocks[i].getCurrentPrice(app.monthIndex)
@@ -532,8 +651,8 @@ def drawAssetTiles(app):
         if app.stockReleased:
             drawLabel(f'${price:,.2f}', 240 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
             drawLabel(f'{(change * 100):.2f}%', 345 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-            drawGraph(app, 240 + (i * (stockTileWidth + 20)) + 20, 370, 140, 60, app.stocks[i])
-    
+
+def drawCropTile(app, otherTileWidth, otherTileHeight):
     # Crops
     price = app.crops[0].getCurrentPrice(app.monthIndex)
     change = (price / app.crops[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
@@ -547,8 +666,8 @@ def drawAssetTiles(app):
         drawLabel(f'${app.crops[0].getValue(app.monthIndex):,.2f}', 250 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLabel(f'${price:,.2f}', 322.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
         drawLabel(f'{(change * 100):.2f}%', 637.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-        drawGraph(app, 405, 600, 200, 80, app.crops[0])
 
+def drawGoldTile(app, otherTileWidth, otherTileHeight):
     # Gold
     price = app.gold[0].getCurrentPrice(app.monthIndex)
     change = (price / app.gold[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
@@ -562,7 +681,19 @@ def drawAssetTiles(app):
         drawLabel(f'${app.gold[0].getValue(app.monthIndex):,.2f}', 840 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLabel(f'${price:,.2f}', 912.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
         drawLabel(f'{(change * 100):.2f}%', 1227.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-        drawGraph(app, 995, 600, 200, 80, app.gold[0])
+
+def drawAssetTiles(app):
+    stockTileWidth = 216
+    stockTileHeight = 240
+    otherTileWidth = 570
+    otherTileHeight = 240
+
+    drawSavingsTile(app, otherTileWidth, otherTileHeight)
+    drawIndexTile(app, otherTileWidth, otherTileHeight)
+    drawStockTiles(app, stockTileWidth, stockTileHeight)
+    drawCropTile(app, otherTileWidth, otherTileHeight)
+    drawGoldTile(app, otherTileWidth, otherTileHeight)
+ 
 
 def drawSideBar(app):
     # Drawing the side bar
@@ -594,36 +725,10 @@ def drawButtons(app):
                 button.draw(app)
         app.simulationButton.draw(app)
 
-def drawGraph(app, x, y, width, height, asset):
-    # get the data
-    startMonth = max(0, app.monthIndex - 10)
-    dataSlice = asset.priceData[startMonth:app.monthIndex + 1]
-    if len(dataSlice) < 2: return
-
-    # scaling the graph
-    minPrice, maxPrice = min(dataSlice), max(dataSlice)
-    priceRange = maxPrice - minPrice if maxPrice != minPrice else 1
-    stepX = width / 10
-
-    # color logic
-    if asset.priceData[app.monthIndex] >= asset.priceData[app.monthIndex - 1]:
-        color = 'forestGreen'
-    else:
-        color = 'fireBrick'
-
-    points = []
-
-    for i in range(len(dataSlice)):
-        currX = x + (i * stepX)
-        currY = y + height - ((dataSlice[i] - minPrice) / priceRange * height)
-        points.extend([currX, currY])
-
-    # close the polygon by going to the bottom right and then back to the start
-    points.extend([x + (len(dataSlice)-1) * stepX, y + height])
-    points.extend([x, y + height])
-
-    # shaded area of the graph
-    drawPolygon(*points, fill=color, opacity=20)
+def drawGraphs(app):
+    for graph in app.graphs:
+        if isReleased(app, graph.asset):
+            graph.draw(app)
 
 def drawTutorialCircles(app):
     circleSize = 20
@@ -685,15 +790,16 @@ def drawTutorialScreen(app):
             drawLabel(text[i], app.width//2, app.height//2 + 20 + (i * 20), fill = 'beige', size = 18, font = 'serif', align = 'center')
     
     elif app.tutorialSlide == 4:
-        drawImage(app.tutorialImages[4], app.width//2 - 150, app.height//2 - 200, width = 300, height = 300 * 0.64625)
-        text = ['As you unlock new assets, a lesson will',
-                'pop up to teach you about that asset and',
-                'how to invest in it wisely. Pay attention',
-                'to these lessons, as they will give you',
-                'tips on how to maximize your net worth',
-                'by the end of the game!']
+        drawImage(app.tutorialImages[4], app.width//2 - 150, app.height//2 - 200, width = 300, height = 300 * 0.29591)
+        text = ['You have the ability to run a portfolio',
+                'simulation at any point in the game.',
+                'Simply press the button on the bottom',
+                'left to toggle the display. A graph will',
+                'appear which will show you the bull/base/bear',
+                'scenario values of your portfolio over',
+                'the next 12 months.']
         for i in range(len(text)):
-            drawLabel(text[i], app.width//2, app.height//2 + 15 + (i * 20), fill = 'beige', size = 18, font = 'serif', align = 'center')
+            drawLabel(text[i], app.width//2, app.height//2 - 40 + (i * 25), fill = 'beige', size = 20, font = 'serif', align = 'center')
 
     elif app.tutorialSlide == app.totalSlides:
         text = ["'Now that you know the basics, it's time to'",
@@ -701,9 +807,12 @@ def drawTutorialScreen(app):
                 'begin your financial journey. Good luck, and',
                 'have fun playing the game!', '\n',
                 'Note: at any point, you can press "P" to pause',
-                'the game and "R" to restart the game.']
+                'the game and "R" to restart the game.', '\n',
+                'For TAs, you can press "S" to skip a month,',
+                '"B" to skip to the main screen, and "M" to',
+                'skip to the end screen.']
         for i in range(len(text)):
-            drawLabel(text[i], app.width//2, app.height//2 - 75 + (i * 25), fill = 'beige', size = 20, font = 'serif', align = 'center')
+            drawLabel(text[i], app.width//2, app.height//2 - 130 + (i * 25), fill = 'beige', size = 20, font = 'serif', align = 'center')
 
     drawTutorialCircles(app)
     drawButtons(app)
@@ -712,7 +821,8 @@ def drawTutorialScreen(app):
 # The function below was written by AI
 def drawSimulationGraph(app, x, y, width, height):
     # 1. Run the simulation and get starting value
-    paths = runMonteCarloSimulation(app) 
+    paths = app.latestSimPaths
+    if paths == []: return
     startValue = getNetWorth(app)
     numMonths = 13 # Month 0 to Month 12
     
@@ -787,8 +897,7 @@ def drawGameOverScreen(app):
     drawRect(0, 0, app.width, app.height, fill = rgb(158, 158, 138))
     drawLabel('CONGRATULATIONS!', app.width//2, 40, size = 20, bold = True, font = 'serif', fill = rgb(65, 70, 58))
     drawLabel('In 10 years, you made: ', app.width//2, 70, size = 15, font = 'serif', fill = rgb(65, 70, 58))
-    drawLabel(f'${getNetWorth(app):,.2f}', app.width//2, 120, size = 40, bold = True, font = 'serif', fill = rgb(65, 70, 58))
-
+    drawLabel(f'${getNetWorth(app):,.2f}', app.width//2, 110, size = 40, bold = True, font = 'serif', fill = rgb(65, 70, 58))
 
 
 def redrawAll(app):
@@ -803,13 +912,14 @@ def redrawAll(app):
         drawSideBar(app)
         drawAssetTiles(app)
         drawButtons(app)
+        drawGraphs(app)
     
     elif app.screen == 'gameOver':
         drawGameOverScreen(app)
 
-        if app.simulationEnabled == True:
-            drawTile(app, app.width//2 + 100 - 300, app.height//2 - 200, 600, 400, 'Monte Carlo Simulation', 20)
-            drawSimulationGraph(app, app.width//2 - 150, app.height//2 - 150, 400, 300)
+    if app.simulationEnabled == True:
+        drawTile(app, app.width//2 + 100 - 300, app.height//2 - 200, 600, 400, 'Monte Carlo Simulation', 20)
+        drawSimulationGraph(app, app.width//2 - 150, app.height//2 - 150, 400, 300)
     
     if app.fadeOpacity > 0:
         drawRect(0, 0, app.width, app.height, fill='black', opacity=app.fadeOpacity)
