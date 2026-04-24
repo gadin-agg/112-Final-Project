@@ -1,9 +1,21 @@
-# Things left to do
-# 1. add number of shares owned to each tile
-# 2. make a graph class
-# 3. add the graph complexity part
-# 4. finish end screen
+'''
+Features List:
+1. Smooth UI: Using linear interpolation to make the numbers have a 'scrolling' effect.
+2. Dynamic Graphing: Each asset has its own graph that is scaled and uses real data from 2016-2026.
+3. Graphing Hover Feature: You can hover over the graphs to see price history.
+4. Monte Carlo Simulation: You can run a Monte Carlo Simulation of your portfolio (with an animation)
+to see future potential portfolio value.
+5. Fade Transitions: Nice UI feature for between screens in the game.
+6. UI Features: Drop shadows, clean aesthetic, etc.
+7. Real Data Extraction: real data from 2016-2026 is being used.
 
+Grading Shortcuts:
+"P" to Pause/Unpause
+"R" to Restart
+"S" to skip one month ahead
+"B" to skip to main page and unlock all assets (bypass tutorial/waiting to unlock assets)
+"M" to skip to end screen
+'''
 
 import os
 import pandas as pd
@@ -11,7 +23,7 @@ from random import sample, normalvariate
 import statistics
 from cmu_graphics import *
 
-# Cleaning the CSV file
+# The function below was written mostly by AI.
 def getCleanData(filePath):
     assetData = pd.read_csv(filePath)
     
@@ -57,8 +69,6 @@ class Asset:
         shareDiff = self.sharesOwned - self.displayedShares
         self.displayedShares += shareDiff * app.scrollingSpeed
 
-
-    # makes sure the game isnt over / out of bounds
     def getCurrentPrice(self, monthIndex):
         if monthIndex < len(self.priceData):
             return self.priceData[monthIndex]
@@ -75,7 +85,7 @@ class Asset:
         for i in range(1, len(self.priceData)):
             prev = self.priceData[i-1]
             curr = self.priceData[i]
-            returns.append((curr-prev) / prev)
+            returns.append((curr - prev) / prev)
         return returns
 
 class Button:
@@ -90,7 +100,6 @@ class Button:
         self.value = value
 
     def draw(self, app):
-
         isHighlighted = False
         if self.action == 'setMultiplier':
             if self.asset == 'savings':
@@ -109,7 +118,7 @@ class Button:
         
         drawRect(self.x + 2, self.y + 2, self.width, self.height, fill = rgb(75, 75, 75))
         drawRect(self.x, self.y, self.width, self.height, fill = color, border = 'black', borderWidth = 2)
-        drawLabel(self.text, self.x + self.width/2, self.y + self.height/2, fill = 'black', size = size, font = 'serif', bold = True, align = 'center')
+        drawLabel(self.text, self.x + self.width/2, self.y + self.height/2, fill = 'black', size = size, font = 'serif', bold = True)
 
     def isClicked(self, mouseX, mouseY):
         return (self.x <= mouseX <= self.x + self.width and self.y <= mouseY <= self.y + self.height)
@@ -156,8 +165,8 @@ class Graph:
             linePoints.append((currX, currY))
 
         # close the polygon by going to the bottom right and then back to the start
-        polygonPoints.extend([self.x + (len(dataSlice)-1) * stepX, self.y + self.height])
-        polygonPoints.extend([self.x, self.y + self.height])
+        polygonPoints.extend([self.x + (len(dataSlice)-1) * stepX, self.y + self.height]) # bottom right
+        polygonPoints.extend([self.x, self.y + self.height]) # bottom left
 
         # shaded area of the graph
         drawPolygon(*polygonPoints, fill = color, opacity = self.fillOpacity)
@@ -198,6 +207,7 @@ class Graph:
             self.isHovering = False
             return False
     
+# The function below was written mostly by AI
 def loadAssets(folders):
     allStocks = []
     index = []
@@ -253,7 +263,6 @@ def onAppStart(app):
 
     # Loading the stock data, picking random things
     app.allS, app.index, app.allC, app.gold = loadAssets(folders)
-    print(app.gold)
 
     app.scrollingSpeed = 0.25
 
@@ -380,27 +389,24 @@ def initializeGraphs(app):
     app.graphs.append(Graph(995, 600, 200, 80, app.gold[0]))
 
 def isReleased(app, asset):
-    if asset == 'savings':
-        return True
-    elif asset in app.index:
-        return app.indexReleased
-    elif asset in app.stocks:
-        return app.stockReleased
-    elif asset in app.crops:
-        return app.cropReleased
-    else:
-        return app.goldReleased
+    if asset == 'savings': return True
+    if asset in app.index: return app.indexReleased
+    if asset in app.stocks: return app.stockReleased
+    if asset in app.crops: return app.cropReleased
+    return app.goldReleased
+
+# ---- STEP FUNCTIONS ----
 
 def onStep(app):
     takeStep(app)
 
-def takeStep(app):
+def handleEndgameLogic(app):
     if app.monthIndex >= 120 and app.screen == 'main' and app.fadeDirection == 0:
         app.nextScreen = 'gameOver'
         app.fadeDirection = 1
         app.paused = True
 
-    oldMonth = app.monthIndex
+def adjustOnStep(app):
     if not app.paused:
         app.stepCounter += 1
         stepsInYear = 720
@@ -409,42 +415,53 @@ def takeStep(app):
         app.barWidth = (currentYearSteps / stepsInYear) * maxWidth
     app.monthIndex = app.stepCounter // 60
 
+def fadeTransition(app):
     if app.fadeDirection == 1:
         app.fadeOpacity += 5
         if app.fadeOpacity >= 100:
             app.fadeOpacity = 100
             app.screen = app.nextScreen
             app.fadeDirection = -1
-            
+        
     elif app.fadeDirection == -1:
         app.fadeOpacity -= 5
         if app.fadeOpacity <= 0:
             app.fadeOpacity = 0
             app.fadeDirection = 0
 
-    if app.monthIndex == app.indexRelease:
-        app.indexReleased = True
-    if app.monthIndex == app.stockRelease:
-        app.stockReleased = True
-    if app.monthIndex == app.cropRelease:
-        app.cropReleased = True
-    if app.monthIndex == app.goldRelease:
-        app.goldReleased = True
+def releaseAssets(app):
+    if app.monthIndex == app.indexRelease: app.indexReleased = True
+    if app.monthIndex == app.stockRelease: app.stockReleased = True
+    if app.monthIndex == app.cropRelease: app.cropReleased = True
+    if app.monthIndex == app.goldRelease: app.goldReleased = True
 
+def changeOnMonth(app, oldMonth):
     if app.monthIndex > oldMonth:
         adjustSavingsBalance(app)
         if app.monthIndex > 0 and app.monthIndex % 6 == 0:
             app.cash += 4000
 
         app.latestSimPaths = runMonteCarloSimulation(app)
-    
+
+def smoothUI(app):
     app.displayedCash = smoothValue(app, app.displayedCash, app.cash)
     app.displayedNetWorth = smoothValue(app, app.displayedNetWorth, getNetWorth(app))
     app.displayedSavings = smoothValue(app, app.displayedSavings, app.savingsBalance)
 
     for asset in (app.allS + app.index + app.allC + app.gold):
         asset.updateDisplayedValue(app)
+
+def takeStep(app):
+    oldMonth = app.monthIndex
+    handleEndgameLogic(app)
+    adjustOnStep(app)
+    fadeTransition(app)
+    releaseAssets(app)
+    changeOnMonth(app, oldMonth)
+    smoothUI(app)
     
+# ---- EVENT HANDLERS ----
+
 def onKeyPress(app, key):
     if key == 'r':
         restartApp(app)
@@ -597,10 +614,11 @@ def drawYearBar(app):
     height = 20
     x = 20
     y = 50
+    monthWidth = width / 12
     drawRect(x, y, width, height, fill = None, border = 'beige', borderWidth = 1)
 
     for i in range(1, 12):
-        lineX = 20 + (i * (160 / 12))
+        lineX = 20 + (i * monthWidth)
         drawLine(lineX, 50, lineX, 70, fill='beige', lineWidth=1, opacity=30)
 
     if app.barWidth > 0:
@@ -873,28 +891,23 @@ def drawSimulationGraph(app, x, y, width, height):
     for p in upperPoints: conePoints.extend([p[0], p[1]])
     for p in reversed(lowerPoints): conePoints.extend([p[0], p[1]])
     
-    drawPolygon(*conePoints, fill='gold', opacity=25)
+    drawPolygon(*conePoints, fill = 'gold', opacity = 25)
     
     # 5. Draw the Median Path (The "Expected" line)
     for i in range(len(medianPoints) - 1):
-        drawLine(medianPoints[i][0], medianPoints[i][1], 
-                 medianPoints[i+1][0], medianPoints[i+1][1], 
-                 fill='darkGoldenrod', lineWidth=2, dashes=True)
+        drawLine(medianPoints[i][0], medianPoints[i][1], medianPoints[i+1][0], medianPoints[i+1][1], fill = 'darkGoldenrod', lineWidth = 2, dashes = True)
 
     # 6. Add GROUNDING LABELS (So the user knows what they are seeing)
     # Use the dollar values from the last indices of our sorted lists
-    drawLabel(f"Bull: ${highBound:,.0f}", x + width + 5, upperPoints[-1][1], 
-              align='left', size=12, font='serif', bold=True, fill='forestGreen')
-    drawLabel(f"Expected: ${finalValues[50]:,.0f}", x + width + 5, medianPoints[-1][1], 
-              align='left', size=12, font='serif', bold=True, fill='darkGoldenrod')
-    drawLabel(f"Bear: ${lowBound:,.0f}", x + width + 5, lowerPoints[-1][1], 
-              align='left', size=12, font='serif', bold=True, fill='fireBrick')
+    drawLabel(f"Bull: ${highBound:,.0f}", x + width + 5, upperPoints[-1][1], align = 'left', size = 12, font = 'serif', bold = True, fill = 'forestGreen')
+    drawLabel(f"Expected: ${finalValues[50]:,.0f}", x + width + 5, medianPoints[-1][1], align = 'left', size = 12, font = 'serif', bold = True, fill = 'darkGoldenrod')
+    drawLabel(f"Bear: ${lowBound:,.0f}", x + width + 5, lowerPoints[-1][1], align = 'left', size = 12, font = 'serif', bold = True, fill = 'fireBrick')
 
     # 7. Draw Axis and Month Markers
-    drawLine(x, y + height, x + width, y + height, fill='black', lineWidth=1)
+    drawLine(x, y + height, x + width, y + height, fill = 'black', lineWidth = 1)
     for m in [0, 6, 12]:
         labelX = x + (m * stepX)
-        drawLabel(f"+{m} months", labelX, y + height + 15, size=10, font='serif')
+        drawLabel(f"+{m} months", labelX, y + height + 15, size = 10, font = 'serif')
         
 def drawGameOverScreen(app):
     drawImage(app.tutorialScreenImage, 0, 0, width = app.width, height = app.height)
