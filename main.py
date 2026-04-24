@@ -654,7 +654,6 @@ def drawStockTiles(app, stockTileWidth, stockTileHeight):
             drawLabel(f'${price:,.2f}', 220 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
             drawLabel(f'{(change * 100):.2f}%', 400 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'right')
             drawLabel(f'Shares: {pythonRound(app.stocks[i].displayedShares)}', 220 + (i * (stockTileWidth + 20)) + 20, 350, fill = 'black', size = 15, font = 'serif', bold = True, align = 'left')
-            print(app.stocks[i].displayedShares, app.stocks[i].sharesOwned)
             drawLabel(f'${app.stocks[i].getSmoothValue():,.2f}', 400 + (i * (stockTileWidth + 20)) + 20, 350, fill = 'black', size = 15, font = 'serif', bold = True, align = 'right')
 
 def drawCropTile(app, otherTileWidth, otherTileHeight):
