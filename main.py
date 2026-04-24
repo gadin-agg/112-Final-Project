@@ -27,13 +27,15 @@ def getCleanData(filePath):
 
 # General class for each of the assets
 class Asset:
-    def __init__(self, ticker, priceData, color, isFractional = False):
+    def __init__(self, ticker, priceData, isFractional = False):
         self.ticker = ticker
         self.priceData = priceData
-        self.color = color
         self.sharesOwned = 0.0
         self.multiplier = 0
         self.isFractional = isFractional
+        self.displayedPrice = self.priceData[0]
+        self.displayedValue = 0
+        self.displayedShares = 0
         
         # monte carlo
         self.returns = self.calculateReturns()
@@ -42,6 +44,19 @@ class Asset:
 
     def __repr__(self):
         return self.ticker
+    
+    def updateDisplayedValue(self, app):
+        targetPrice = self.getCurrentPrice(app.monthIndex)
+        priceDiff = targetPrice - self.displayedPrice
+        self.displayedPrice += priceDiff * 0.3333
+
+        targetValue = self.sharesOwned * targetPrice
+        valueDiff = targetValue - self.displayedValue
+        self.displayedValue += valueDiff * 0.3333
+
+        shareDiff = self.sharesOwned - self.displayedShares
+        self.displayedShares += shareDiff * 0.3333
+
 
     # makes sure the game isnt over / out of bounds
     def getCurrentPrice(self, monthIndex):
@@ -52,6 +67,9 @@ class Asset:
     def getValue(self, monthIndex):
         return self.sharesOwned * self.getCurrentPrice(monthIndex)
     
+    def getSmoothValue(self):
+        return self.displayedValue
+
     def calculateReturns(self):
         returns = []
         for i in range(1, len(self.priceData)):
@@ -142,16 +160,16 @@ class Graph:
         polygonPoints.extend([self.x, self.y + self.height])
 
         # shaded area of the graph
-        drawPolygon(*polygonPoints, fill=color, opacity=self.fillOpacity)
+        drawPolygon(*polygonPoints, fill = color, opacity = self.fillOpacity)
 
         # draw the line on top
         for i in range(len(linePoints) - 1):
-            drawLine(linePoints[i][0], linePoints[i][1], linePoints[i+1][0], linePoints[i+1][1], fill=color, lineWidth=2)
+            drawLine(linePoints[i][0], linePoints[i][1], linePoints[i+1][0], linePoints[i+1][1], fill = color, lineWidth = 2)
 
         if self.isHovering:
-            drawCircle(self.hoverX, self.hoverY, 4, fill='white', border='black', borderWidth=1)
-            drawRect(self.hoverX - 35, self.hoverY - 35, 70, 20, fill='black', opacity=80)
-            drawLabel(f"${self.hoverValue:,.2f}", self.hoverX, self.hoverY - 25, fill='white', size=11, bold=True, align='center')
+            drawCircle(self.hoverX, self.hoverY, 4, fill = 'white', border = 'black', borderWidth = 1)
+            drawRect(self.hoverX - 35, self.hoverY - 35, 70, 20, fill = 'black', opacity = 75)
+            drawLabel(f"${self.hoverValue:,.2f}", self.hoverX, self.hoverY - 25, fill = 'white', size = 11, bold = True)
 
     def updateHover(self, mouseX, mouseY, app):
         # check if in box
@@ -180,43 +198,35 @@ class Graph:
             self.isHovering = False
             return False
     
-        
-
-def loadAssets(categories):
+def loadAssets(folders):
     allStocks = []
     index = []
     allCrops = []
     gold = []
 
-    for folder in categories:
-        color = categories[folder]
+    for folder in folders:
         for file in os.listdir(folder):
             if file.endswith('.csv'):
                 path = os.path.join(folder, file)
                 ticker = file.replace('.csv', '')
                 prices = getCleanData(path)
                 if folder == 'stock_data':
-                    asset = Asset(ticker, prices, color)
+                    asset = Asset(ticker, prices)
                     allStocks.append(asset)
                 elif folder == 'index_data':
-                    asset = Asset(ticker, prices, color, isFractional = True)
+                    asset = Asset(ticker, prices, isFractional = True)
                     index.append(asset)
                 elif folder == 'crop_data':
-                    asset = Asset(ticker, prices, color)
+                    asset = Asset(ticker, prices)
                     allCrops.append(asset)
                 else:
-                    asset = Asset(ticker, prices, color, isFractional = True)
+                    asset = Asset(ticker, prices, isFractional = True)
                     gold.append(asset)
 
     return allStocks, index, allCrops, gold
 
 def onAppStart(app):
-    categories = {
-        'stock_data' : 'forestGreen',
-        'index_data' : 'dodgerBlue',
-        'crop_data' : 'coral',
-        'gold_data' : 'gold'}
-    
+    folders = ['index_data', 'stock_data', 'crop_data', 'gold_data']
     # Fake names
     app.stockNames = {
     'AAPL':  'Fruit Tech Inc.',
@@ -242,7 +252,7 @@ def onAppStart(app):
     }
 
     # Loading the stock data, picking random things
-    app.allS, app.index, app.allC, app.gold = loadAssets(categories)
+    app.allS, app.index, app.allC, app.gold = loadAssets(folders)
     print(app.gold)
 
     # timing constants
@@ -265,8 +275,12 @@ def onAppStart(app):
 
 def restartApp(app):
     # Basic stuff
+    app.barWidth = 0
     app.cash = 4000
+    app.displayedCash = 4000
+    app.displayedNetWorth = 4000
     app.savingsBalance = 0
+    app.displayedSavings = 0
     app.stepCounter = 0
     app.monthIndex = 0
     app.stepsPerSecond = 30
@@ -302,7 +316,6 @@ def restartApp(app):
     initializeButtons(app)
     initializeGraphs(app)
 
-
     # reseting ownership
     for asset in app.allS + app.index + app.allC:
         asset.sharesOwned = 0
@@ -310,17 +323,17 @@ def restartApp(app):
 def initializeButtons(app):
     app.buttons = []
 
-    # --- Savings Buttons --- 
+    # savings buttons
     createMultiplierRow(app, 'savings', 427.5, 210, [500, 1000, 5000, 'MAX'])
     app.buttons.append(Button(250, 210, 80, 35, 'Deposit', 'savings', 'deposit', 100))
     app.buttons.append(Button(685, 210, 80, 35, 'Withdraw', 'savings', 'withdraw', 100))
 
-    # --- Index Buttons ---
+    # index buttons
     createMultiplierRow(app, app.index[0], 1022.5, 210, [500, 1000, 5000, 'MAX'])
     app.buttons.append(Button(840, 210, 80, 35, 'Buy', app.index[0], 'buy', 100))
     app.buttons.append(Button(1270, 210, 80, 35, 'Sell', app.index[0], 'sell', 100))
 
-    # --- Stock Buttons ---
+    # stock buttons
     for i in range(len(app.stocks)):
         stock = app.stocks[i]
         x, y = 240 + i * (216 + 20), 480
@@ -329,12 +342,12 @@ def initializeButtons(app):
         app.buttons.append(Button(x, y, 40, 25, 'Buy', stock, 'buy', 100))
         app.buttons.append(Button(x + 140, y, 40, 25, 'Sell', stock, 'sell', 100))
 
-    # --- Crop Buttons ---
+    # crop buttons
     createMultiplierRow(app, app.crops[0], 432.5, 730, [500, 1000, 5000, 'MAX'])
     app.buttons.append(Button(250, 730, 80, 35, 'Buy', app.crops[0], 'buy', 100))
     app.buttons.append(Button(680, 730, 80, 35, 'Sell', app.crops[0], 'sell', 100))
 
-    # --- Gold Buttons ---
+    # gold buttons
     createMultiplierRow(app, app.gold[0], 1022.5, 730, [500, 1000, 5000, 'MAX'])
     app.buttons.append(Button(840, 730, 80, 35, 'Buy', app.gold[0], 'buy', 100))
     app.buttons.append(Button(1270, 730, 80, 35, 'Sell', app.gold[0], 'sell', 100))
@@ -358,7 +371,7 @@ def initializeGraphs(app):
     # stocks
     for i in range(5):
         x = 240 + (i * (216 + 20)) + 20
-        app.graphs.append(Graph(x, 370, 140, 60, app.stocks[i]))
+        app.graphs.append(Graph(x, 380, 140, 60, app.stocks[i]))
         
     # crops, gold
     app.graphs.append(Graph(405, 600, 200, 80, app.crops[0]))
@@ -388,6 +401,10 @@ def takeStep(app):
     oldMonth = app.monthIndex
     if not app.paused:
         app.stepCounter += 1
+        stepsInYear = 720
+        maxWidth = 156
+        currentYearSteps = app.stepCounter % stepsInYear
+        app.barWidth = (currentYearSteps / stepsInYear) * maxWidth
     app.monthIndex = app.stepCounter // 60
 
     if app.fadeDirection == 1:
@@ -419,8 +436,13 @@ def takeStep(app):
 
         app.latestSimPaths = runMonteCarloSimulation(app)
     
-    
+    app.displayedCash = smoothValue(app.displayedCash, app.cash)
+    app.displayedNetWorth = smoothValue(app.displayedNetWorth, getNetWorth(app))
+    app.displayedSavings = smoothValue(app.displayedSavings, app.savingsBalance)
 
+    for asset in (app.allS + app.index + app.allC + app.gold):
+        asset.updateDisplayedValue(app)
+    
 def onKeyPress(app, key):
     if key == 'r':
         restartApp(app)
@@ -429,6 +451,7 @@ def onKeyPress(app, key):
     elif key == 's':
         if app.monthIndex < 120:
             app.stepCounter += 60
+            app.barWidth += (156/(60*12)) * 60
     elif key == 'b':
         app.stockReleased = True
         app.indexReleased = True
@@ -488,6 +511,10 @@ def adjustSavingsBalance(app):
 
 
 # --------- OTHER FUNCTIONS ----------
+
+def smoothValue(current, target):
+    diff = target - current
+    return current + (diff * 0.3333)
 
 def executeTrade(app, action, asset):
     price = asset.getCurrentPrice(app.monthIndex)
@@ -561,34 +588,6 @@ def runMonteCarloSimulation(app):
 
     return allSimulationPaths
 
-# Omit, do not grade. Testing function, written by AI.
-def testSimulation(app):
-    print("\n--- Running Monte Carlo Test (12-Month Projection) ---")
-    print(f"Starting Net Worth: ${getNetWorth(app):,.2f}")
-    
-    # Run the simulation
-    paths = runMonteCarloSimulation(app) # This calls the function we drafted
-    
-    # Get the final value from every path (the last item in each list)
-    finalValues = [path[-1] for path in paths]
-    finalValues.sort()
-    
-    # Calculate key statistics
-    avgOutcome = sum(finalValues) / len(finalValues)
-    bearCase = finalValues[5]  # 5th percentile (out of 100)
-    bullCase = finalValues[95] # 95th percentile (out of 100)
-    
-    print(f"Most Likely (Average): ${avgOutcome:,.2f}")
-    print(f"Bear Case (5th %):    ${bearCase:,.2f}")
-    print(f"Bull Case (95th %):   ${bullCase:,.2f}")
-    
-    # Sanity Check
-    if bearCase < avgOutcome < bullCase:
-        print(">>> SUCCESS: Simulation logic is statistically sound.")
-    else:
-        print(">>> WARNING: Simulation distribution is skewed.")
-    print("----------------------------------------------------\n")
-
 # --------- DRAWING FUNCTIONS ----------
 
 def drawYearBar(app):
@@ -598,11 +597,12 @@ def drawYearBar(app):
     y = 50
     drawRect(x, y, width, height, fill = None, border = 'beige', borderWidth = 1)
 
-    segmentWidth = width / 12
-    month = app.monthIndex % 12
+    for i in range(1, 12):
+        lineX = 20 + (i * (160 / 12))
+        drawLine(lineX, 50, lineX, 70, fill='beige', lineWidth=1, opacity=30)
 
-    for i in range(month + 1):
-        drawRect(x + (i * segmentWidth + 2), y + 2, segmentWidth - 4, height - 4, fill='gold')
+    if app.barWidth > 0:
+        drawRect(x + 2, y + 2, app.barWidth, height - 4, fill = 'gold')
 
     if not app.paused:
         drawLabel(f'YEAR {app.monthIndex // 12} OF 10', 20, 30, fill = 'beige', size = 20, font = 'serif', bold = True, align = 'left')
@@ -623,11 +623,11 @@ def drawSavingsTile(app, otherTileWidth, otherTileHeight):
     drawImage('savings-account.png', 455, 60, width = 100, height = 100 * 0.95588)
     drawLabel(f'Balance', 250, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
     drawLine(250, 190, 250 + otherTileWidth - 60, 190, fill = 'black', dashes = True)
-    drawLabel(f'${app.savingsBalance:,.2f}', 250 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+    drawLabel(f'${app.displayedSavings:,.2f}', 330 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'right')
 
 def drawIndexTile(app, otherTileWidth, otherTileHeight):
     # Index fund
-    price = app.index[0].getCurrentPrice(app.monthIndex)
+    price = app.index[0].displayedPrice
     change = (price / app.index[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
     changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
     title = 'Index Fund' if app.indexReleased else 'LOCKED'
@@ -636,25 +636,27 @@ def drawIndexTile(app, otherTileWidth, otherTileHeight):
     if app.indexReleased:
         drawLabel(f'Balance', 840, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLine(840, 190, 840 + otherTileWidth - 60, 190, fill = 'black', dashes = True)
-        drawLabel(f'${app.index[0].getValue(app.monthIndex):,.2f}', 840 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${app.index[0].getSmoothValue():,.2f}', 920 + otherTileWidth - 150, 170, fill = 'black', size = 20, font = 'serif', bold = True, align = 'right')
         drawLabel(f'${price:,.2f}', 912.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
         drawLabel(f'{(change * 100):.2f}%', 1227.5, 80, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
 
 def drawStockTiles(app, stockTileWidth, stockTileHeight):
     # Stocks
     for i in range(5):
-        price = app.stocks[i].getCurrentPrice(app.monthIndex)
+        price = app.stocks[i].displayedPrice
         change = (price / app.stocks[i].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
         changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
         title = app.stockNames[app.stocks[i].ticker] if app.stockReleased else 'LOCKED'
         drawTile(app, 220 + (i * (stockTileWidth + 20)), 280, stockTileWidth, stockTileHeight, title, 15)
         if app.stockReleased:
-            drawLabel(f'${price:,.2f}', 240 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
-            drawLabel(f'{(change * 100):.2f}%', 345 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+            drawLabel(f'${price:,.2f}', 220 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
+            drawLabel(f'{(change * 100):.2f}%', 400 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'right')
+            drawLabel(f'Shares: {pythonRound(app.stocks[i].displayedShares)}', 220 + (i * (stockTileWidth + 20)) + 20, 350, fill = 'black', size = 15, font = 'serif', bold = True, align = 'left')
+            drawLabel(f'${app.stocks[i].getSmoothValue():,.2f}', 400 + (i * (stockTileWidth + 20)) + 20, 350, fill = 'black', size = 15, font = 'serif', bold = True, align = 'right')
 
 def drawCropTile(app, otherTileWidth, otherTileHeight):
     # Crops
-    price = app.crops[0].getCurrentPrice(app.monthIndex)
+    price = app.crops[0].displayedPrice
     change = (price / app.crops[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
     changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
     title = f'{app.crops[0].ticker}' if app.cropReleased else 'LOCKED'
@@ -663,13 +665,13 @@ def drawCropTile(app, otherTileWidth, otherTileHeight):
     if app.cropReleased:
         drawLabel(f'Balance', 250, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLine(250, 710, 250 + otherTileWidth - 60, 710, fill = 'black', dashes = True)
-        drawLabel(f'${app.crops[0].getValue(app.monthIndex):,.2f}', 250 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${app.crops[0].getSmoothValue():,.2f}', 330 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'right')
         drawLabel(f'${price:,.2f}', 322.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
         drawLabel(f'{(change * 100):.2f}%', 637.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
 
 def drawGoldTile(app, otherTileWidth, otherTileHeight):
     # Gold
-    price = app.gold[0].getCurrentPrice(app.monthIndex)
+    price = app.gold[0].displayedPrice
     change = (price / app.gold[0].getCurrentPrice(app.monthIndex - 1)) - 1 if app.monthIndex > 0 else 0
     changeColor = 'forestGreen' if change > 0 else 'fireBrick' if change < 0 else 'black'
     title = 'Gold' if app.goldReleased else 'LOCKED'
@@ -678,7 +680,7 @@ def drawGoldTile(app, otherTileWidth, otherTileHeight):
     if app.goldReleased:
         drawLabel(f'Balance', 840, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
         drawLine(840, 710, 840 + otherTileWidth - 60, 710, fill = 'black', dashes = True)
-        drawLabel(f'${app.gold[0].getValue(app.monthIndex):,.2f}', 840 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'left')
+        drawLabel(f'${app.gold[0].getSmoothValue():,.2f}', 920 + otherTileWidth - 150, 690, fill = 'black', size = 20, font = 'serif', bold = True, align = 'right')
         drawLabel(f'${price:,.2f}', 912.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
         drawLabel(f'{(change * 100):.2f}%', 1227.5, 600, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
 
@@ -701,9 +703,9 @@ def drawSideBar(app):
 
     drawImage('piggy-bank.png', 10, 80, width = 180, height = 180 * 0.54585798816)
     drawLabel('POCKET CASH', 20, 400, fill = 'beige', size = 12, font = 'serif', bold = True, align = 'left')
-    drawLabel(f'${app.cash:,.2f}', 20, 420, fill = 'beige', size = 25, font = 'serif', bold = True, align = 'left')
+    drawLabel(f'${app.displayedCash:,.2f}', 20, 420, fill = 'beige', size = 25, font = 'serif', bold = True, align = 'left')
     drawLabel('NET WORTH', 20, 450, fill = 'beige', size = 12, font = 'serif', bold = True, align = 'left')
-    drawLabel(f'${getNetWorth(app):,.2f}', 20, 470, fill = 'beige', size = 25, font = 'serif', bold = True, align = 'left')
+    drawLabel(f'${app.displayedNetWorth:,.2f}', 20, 470, fill = 'beige', size = 25, font = 'serif', bold = True, align = 'left')
 
     drawYearBar(app)
 
@@ -817,7 +819,6 @@ def drawTutorialScreen(app):
     drawTutorialCircles(app)
     drawButtons(app)
 
-
 # The function below was written by AI
 def drawSimulationGraph(app, x, y, width, height):
     # 1. Run the simulation and get starting value
@@ -894,11 +895,10 @@ def drawSimulationGraph(app, x, y, width, height):
         drawLabel(f"+{m} months", labelX, y + height + 15, size=10, font='serif')
         
 def drawGameOverScreen(app):
-    drawRect(0, 0, app.width, app.height, fill = rgb(158, 158, 138))
-    drawLabel('CONGRATULATIONS!', app.width//2, 40, size = 20, bold = True, font = 'serif', fill = rgb(65, 70, 58))
-    drawLabel('In 10 years, you made: ', app.width//2, 70, size = 15, font = 'serif', fill = rgb(65, 70, 58))
-    drawLabel(f'${getNetWorth(app):,.2f}', app.width//2, 110, size = 40, bold = True, font = 'serif', fill = rgb(65, 70, 58))
-
+    drawImage(app.tutorialScreenImage, 0, 0, width = app.width, height = app.height)
+    drawLabel('CONGRATULATIONS!', app.width//2, app.height//2 - 60, size = 45, bold = True, font = 'serif', fill = 'beige')
+    drawLabel('In 10 years, you made: ', app.width//2, app.height//2, size = 20, font = 'serif', fill = 'beige')
+    drawLabel(f'${getNetWorth(app):,.2f}', app.width//2, app.height//2 + 40, size = 40, bold = True, font = 'serif', fill = 'beige')
 
 def redrawAll(app):
     drawButtons(app)
