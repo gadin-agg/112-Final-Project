@@ -48,14 +48,14 @@ class Asset:
     def updateDisplayedValue(self, app):
         targetPrice = self.getCurrentPrice(app.monthIndex)
         priceDiff = targetPrice - self.displayedPrice
-        self.displayedPrice += priceDiff * 0.3333
+        self.displayedPrice += priceDiff * app.scrollingSpeed
 
         targetValue = self.sharesOwned * targetPrice
         valueDiff = targetValue - self.displayedValue
-        self.displayedValue += valueDiff * 0.3333
+        self.displayedValue += valueDiff * app.scrollingSpeed
 
         shareDiff = self.sharesOwned - self.displayedShares
-        self.displayedShares += shareDiff * 0.3333
+        self.displayedShares += shareDiff * app.scrollingSpeed
 
 
     # makes sure the game isnt over / out of bounds
@@ -255,6 +255,8 @@ def onAppStart(app):
     app.allS, app.index, app.allC, app.gold = loadAssets(folders)
     print(app.gold)
 
+    app.scrollingSpeed = 0.25
+
     # timing constants
     app.indexRelease = 6
     app.stockRelease = 12
@@ -436,9 +438,9 @@ def takeStep(app):
 
         app.latestSimPaths = runMonteCarloSimulation(app)
     
-    app.displayedCash = smoothValue(app.displayedCash, app.cash)
-    app.displayedNetWorth = smoothValue(app.displayedNetWorth, getNetWorth(app))
-    app.displayedSavings = smoothValue(app.displayedSavings, app.savingsBalance)
+    app.displayedCash = smoothValue(app, app.displayedCash, app.cash)
+    app.displayedNetWorth = smoothValue(app, app.displayedNetWorth, getNetWorth(app))
+    app.displayedSavings = smoothValue(app, app.displayedSavings, app.savingsBalance)
 
     for asset in (app.allS + app.index + app.allC + app.gold):
         asset.updateDisplayedValue(app)
@@ -512,9 +514,9 @@ def adjustSavingsBalance(app):
 
 # --------- OTHER FUNCTIONS ----------
 
-def smoothValue(current, target):
+def smoothValue(app, current, target):
     diff = target - current
-    return current + (diff * 0.3333)
+    return current + (diff * app.scrollingSpeed)
 
 def executeTrade(app, action, asset):
     price = asset.getCurrentPrice(app.monthIndex)
@@ -527,7 +529,7 @@ def executeTrade(app, action, asset):
         if asset.isFractional:
             sharesToBuy = cashToSpend / price
         else:
-            sharesToBuy = cashToSpend // price
+            sharesToBuy = (cashToSpend + 0.0001) // price
 
         if app.cash >= sharesToBuy * price and sharesToBuy > 0:
             app.cash -= sharesToBuy * price
@@ -652,6 +654,7 @@ def drawStockTiles(app, stockTileWidth, stockTileHeight):
             drawLabel(f'${price:,.2f}', 220 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'left')
             drawLabel(f'{(change * 100):.2f}%', 400 + (i * (stockTileWidth + 20)) + 20, 330, fill = changeColor, size = 15, font = 'serif', bold = True, align = 'right')
             drawLabel(f'Shares: {pythonRound(app.stocks[i].displayedShares)}', 220 + (i * (stockTileWidth + 20)) + 20, 350, fill = 'black', size = 15, font = 'serif', bold = True, align = 'left')
+            print(app.stocks[i].displayedShares, app.stocks[i].sharesOwned)
             drawLabel(f'${app.stocks[i].getSmoothValue():,.2f}', 400 + (i * (stockTileWidth + 20)) + 20, 350, fill = 'black', size = 15, font = 'serif', bold = True, align = 'right')
 
 def drawCropTile(app, otherTileWidth, otherTileHeight):
@@ -804,7 +807,7 @@ def drawTutorialScreen(app):
             drawLabel(text[i], app.width//2, app.height//2 - 40 + (i * 25), fill = 'beige', size = 20, font = 'serif', align = 'center')
 
     elif app.tutorialSlide == app.totalSlides:
-        text = ["'Now that you know the basics, it's time to'",
+        text = ["Now that you know the basics, it's time to",
                 'start investing! Click the button below to',
                 'begin your financial journey. Good luck, and',
                 'have fun playing the game!', '\n',
